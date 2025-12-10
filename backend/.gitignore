@@ -1,0 +1,61 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.coverage
+.tox/
+.nox/
+.hypothesis/
+htmlcov/
+.pytest_cache/
+*.db
+# Virtual environment
+.venv/
+env/
+venv/
+ENV/
+bin/
+include/
+lib/
+local/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.bak
+*.swo
+*~
+.DS_Store
+
+# FastAPI specific
+.env # Environment variables (often sensitive)
+*.env
+*.log # Log files
+/data/ # Example directory for data files (if applicable)

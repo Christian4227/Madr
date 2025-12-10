@@ -1,0 +1,54 @@
+[project]
+name = "madr"
+version = "0.1.0"
+description = ""
+authors = [{ name = "luiz_loon", email = "luiz_loon@yahoo.com.br" }]
+readme = "README.md"
+requires-python = ">=3.13.3,<4.0.0"
+dependencies = [
+    "alembic>=1.17.2",
+    "fastapi[standard]",
+    "pwdlib[argon2]>=0.3.0",
+    "pydantic-settings>=2.12.0",
+    "pyjwt>=2.10.1",
+    "sqlalchemy>=2.0.44",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+    "pytest-cov",
+    "taskipy",
+    "ruff",
+    "alembic>=1.17.2",
+    "ipdb",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 79
+extend-exclude = ['migrations']
+
+[tool.ruff.lint]
+preview = true
+select = ['I', 'F', 'E', 'W', 'PL', 'PT']
+
+[tool.ruff.format]
+preview = true
+quote-style = 'single'
+
+[tool.pytest.ini_options]
+pythonpath = "."
+addopts = '-p no:warnings'
+
+[tool.taskipy.tasks]
+lint = 'ruff check'
+pre_format = 'ruff check --fix'
+format = 'ruff format'
+run = 'fastapi dev madr/app.py'
+pre_test = 'task lint'
+test = 'pytest -s -x --cov=madr -vv'
+post_test = 'coverage html'
