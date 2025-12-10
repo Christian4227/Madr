@@ -26,7 +26,7 @@ source .venv/bin/activate
 
 ### 4. Instale as dependências
 ```bash
-uv pip install -r requirements.txt
+uv sync
 ```
 
 ### 5. Configure as variáveis de ambiente
@@ -168,7 +168,7 @@ uv venv
 
 ### 3. Ative o ambiente
 ```bash
-source .venv/bin/activate
+source ./backend/.venv/bin/activate
 ```
 
 ### 4. Instale as dependências
@@ -184,6 +184,7 @@ Crie um arquivo `.env` na raiz:
 SECRET_KEY=sua_chave_segura
 ALGORITHM=HS256
 DATABASE_URL=postgresql+psycopg://user:senha@localhost:5432/romancistas
+CORS_ORIGINS=["http://localhost:3000", "http://127.0.0.1:3000"]
 ```
 
 ### 6. Execute as migrações (se houver)
