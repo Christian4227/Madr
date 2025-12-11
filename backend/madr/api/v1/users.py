@@ -1,5 +1,6 @@
 from http import HTTPStatus
 
+import ipdb  # noqa: F401
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -17,13 +18,14 @@ router = APIRouter(prefix='/users', tags=['users'])
 @router.post('/', status_code=HTTPStatus.CREATED, response_model=UserPublic)
 def create_user(user: UserCreate, session: Session = Depends(get_session)):
     stmt = select(User)
-    stmt.where((User.username == user.username) | (User.email == user.email))
+    stmt = stmt.where(
+        (User.username == user.username) | (User.email == user.email)
+    )
+
     existing_user = session.scalar(stmt)
     if existing_user:
-        raise HTTPException(
-            HTTPStatus.CONFLICT, detail='Conta já consta no MADR'
-        )
-    db_user = User(**user.model_dump(exclude_unset=True, exclude={'password'}))
+        raise HTTPException(HTTPStatus.CONFLICT, detail='User has been exists')
+    db_user = User(**user.model_dump(exclude_unset=True))
     db_user.password = get_hash(db_user.password)
     session.add(db_user)
     session.commit()
@@ -36,19 +38,14 @@ def udpate_user(
     active_user: active_user, user: UserUpdate, session: db_session
 ):
 
-    existing_user = session.scalar(
-        select(User).where(User.id == active_user.id)
-    )
-    if not existing_user:
-        raise HTTPException(HTTPStatus.NOT_FOUND, detail='User Not Found')
     items = user.model_dump(
         exclude_unset=True, exclude={'password': True}
     ).items()
     for key, value in items:
-        setattr(existing_user, key, value)
+        setattr(active_user, key, value)
     session.commit()
-    session.refresh(existing_user)
-    return existing_user
+    session.refresh(active_user)
+    return active_user
 
 
 # @router.get(
@@ -69,9 +66,7 @@ def remove_user(
     active_user: active_user,
     session: Session = Depends(get_session),
 ):
-    try:
-        session.execute(delete(User).where(User.id == active_user.id))
-        session.commit()
-    except Exception:
-        raise HTTPException(HTTPStatus.NOT_FOUND, 'User Not Found')
+    session.execute(delete(User).where(User.id == active_user.id))
+    session.commit()
+
     return {'message': 'Account Removed'}

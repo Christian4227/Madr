@@ -22,7 +22,9 @@ def create_novelist(
     stmt = select(Novelist).where((Novelist.name == novelist.name))
     existing_novelist = session.scalar(stmt)
     if existing_novelist:
-        raise HTTPException(HTTPStatus.CONFLICT, detail='Novelist exists')
+        raise HTTPException(
+            HTTPStatus.CONFLICT, detail='Novelist has been exists'
+        )
     db_novelist = Novelist(**novelist.model_dump())
     session.add(db_novelist)
     session.commit()

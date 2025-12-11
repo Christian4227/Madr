@@ -19,10 +19,10 @@ def test_create_novelist(session: Session):
     assert novelist.name == 'alice'
 
 
-def test_update_novelist(session: Session, novelist: Novelist):
-    name = novelist.name
-    novelist.name = f'modified_{name}'
-    session.add(novelist)
+def test_update_novelist(session: Session, novelist_with_books: Novelist):
+    name = novelist_with_books.name
+    novelist_with_books.name = f'modified_{name}'
+    session.add(novelist_with_books)
     session.commit()
 
     novelist_modfied = session.scalar(select(Novelist).where())

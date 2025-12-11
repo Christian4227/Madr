@@ -3,8 +3,9 @@ from http import HTTPStatus
 import ipdb  # noqa: F401
 from fastapi.testclient import TestClient
 
-from madr.core.security import Token
 from madr.models.user import User
+from madr.schemas.security import Token
+from madr.schemas.user import UserCreate
 
 
 def test_users_deve_retornar_usuario_criado_com_id(client: TestClient):
@@ -20,6 +21,23 @@ def test_users_deve_retornar_usuario_criado_com_id(client: TestClient):
     del payload['password']
     assert response.status_code == HTTPStatus.CREATED
     assert response.json() == {**payload, 'id': 1}
+
+
+def test_users_deve_retornar_excessao_conflito_409(
+    client: TestClient, user: User
+):
+    user_schema = UserCreate.model_validate(user, from_attributes=True)
+
+    payload = user_schema.model_dump()
+    payload['password'] = '123456789'
+    response = client.post(
+        '/users/',
+        json=payload,
+    )
+
+    assert response.status_code == HTTPStatus.CONFLICT
+
+    assert response.json() == {'detail': 'User has been exists'}
 
 
 def test_update_user_deve_retornar_success_delecao(
@@ -80,9 +98,8 @@ def test_users_deve_retornar_token_de_usuario_autenticado(
         'username': user.email,
         'password': '123456789',
     }
-    response = client.post('/users/token', data=payload)
+    response = client.post('/auth/token', data=payload)
     data = response.json()
-
     assert 'access_token' in data
     assert 'token_type' in data
     assert data['access_token'].startswith('ey')

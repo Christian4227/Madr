@@ -3,18 +3,16 @@ from typing import List
 
 import pytest
 from fastapi.testclient import TestClient
-from pwdlib import PasswordHash
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from madr.app import app
-from madr.core.security import Token, generate_token
+from madr.core.security import generate_token, get_hash
 from madr.models import table_registry
-from madr.models.novelist import Novelist
 from madr.models.user import User
-
-pwd = PasswordHash.recommended()
+from madr.schemas.security import Token
+from tests.factories import BookFactory, NovelistFactory, UserFactory
 
 
 @pytest.fixture
@@ -44,16 +42,10 @@ def session():
     engine.dispose()
 
 
-def hash_password(raw_password: str) -> str:
-    return pwd.hash(raw_password)
-
-
 @pytest.fixture
 def user(session: Session):
-    hashed_password = hash_password('123456789')
-    new_user = User(
-        username='pedro', password=hashed_password, email='pedro@gmail.com'
-    )
+
+    new_user = UserFactory()
 
     session.add(new_user)
     session.commit()
@@ -63,9 +55,23 @@ def user(session: Session):
 
 @pytest.fixture
 def novelist(session: Session):
-    new_novelist = Novelist(name='Hercule Poiroht')
-
+    new_novelist = NovelistFactory.build()
     session.add(new_novelist)
+    session.commit()
+    session.refresh(new_novelist)
+    return new_novelist
+
+
+@pytest.fixture
+def novelist_with_books(session: Session):
+    new_novelist = NovelistFactory.build()
+    session.add(new_novelist)
+    session.flush()
+
+    books = BookFactory.build_batch(
+        size=25, id_novelist=new_novelist.id, novelist=new_novelist
+    )
+    session.add_all(books)
     session.commit()
     session.refresh(new_novelist)
     return new_novelist
@@ -88,7 +94,7 @@ def users(session: Session):
     for n in range(11):
         new_user = User(
             username=f'alice_{n + 1}',
-            password=hash_password(f'secret-{n + 1}'),
+            password=get_hash(f'secret-{n + 1}'),
             email=f'teste{n + 1}@test',
         )
         session.add(new_user)

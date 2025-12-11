@@ -22,6 +22,7 @@ dev-dependencies = [
     "ruff",
     "alembic>=1.17.2",
     "ipdb",
+    "factory-boy>=3.3.3",
 ]
 
 [build-system]
