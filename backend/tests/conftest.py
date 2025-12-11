@@ -44,8 +44,9 @@ def session():
 
 @pytest.fixture
 def user(session: Session):
-
+    pwd_raw = '123456789'
     new_user = UserFactory()
+    new_user.password = get_hash(pwd_raw)
 
     session.add(new_user)
     session.commit()

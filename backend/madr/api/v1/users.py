@@ -38,13 +38,20 @@ def udpate_user(
     active_user: active_user, user: UserUpdate, session: db_session
 ):
 
-    items = user.model_dump(
+    update_data = user.model_dump(
         exclude_unset=True, exclude={'password': True}
-    ).items()
-    for key, value in items:
+    )
+    for key, value in update_data.items():
         setattr(active_user, key, value)
-    session.commit()
-    session.refresh(active_user)
+    try:
+        session.commit()
+        session.refresh(active_user)
+    except Exception:
+        session.rollback()
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail='Failed to update user',
+        )
     return active_user
 
 

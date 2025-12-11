@@ -6,7 +6,12 @@ from sqlalchemy import select
 
 from madr.dependecies import active_user, db_session
 from madr.models.novelist import Novelist
-from madr.schemas.novelists import NovelistPublic, NovelistSchema
+from madr.schemas import Message
+from madr.schemas.novelists import (
+    NovelistPublic,
+    NovelistSchema,
+    NovelistUpdate,
+)
 
 router = APIRouter(prefix='/novelists', tags=['novelists'])
 
@@ -32,48 +37,61 @@ def create_novelist(
     return db_novelist
 
 
-# @router.put(
-#     '/{user_id}', status_code=HTTPStatus.CREATED, response_model=UserPublic
-# )
-# def udpate_user(
-#     user_id: int, user: UserCreate, session: Session = Depends(get_session)
-# ):
-#     existing_user = session.scalar(select(User).where(User.id == user_id))
-#     if not existing_user:
-#         raise HTTPException(HTTPStatus.NOT_FOUND, detail='User Not Found')
-#     items = user.model_dump(
-#         exclude_unset=True, exclude={'password': True}
-#     ).items()
-#     for key, value in items:
-#         setattr(existing_user, key, value)
-#     session.commit()
-#     session.refresh(existing_user)
-#     return existing_user
+@router.put(
+    '/{novelist_id}', status_code=HTTPStatus.OK, response_model=NovelistPublic
+)
+def update_novelist(
+    active_user: active_user,
+    novelist_id: int,
+    novelist: NovelistUpdate,
+    session: db_session,
+):
+    # Get the novelist
+    existing_novelist = session.scalar(
+        select(Novelist).where(Novelist.id == novelist_id)
+    )
+
+    if not existing_novelist:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND, detail='Novelist not found'
+        )
+
+    update_data = novelist.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(existing_novelist, key, value)
+
+    try:
+        session.commit()
+        session.refresh(existing_novelist)
+    except Exception:
+        session.rollback()
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail='Failed to update novelist',
+        )
+
+    return existing_novelist
 
 
-# # @router.get(
-# #     '/',
-# #     status_code=HTTPStatus.OK,
-# #     response_model=UserList,
-# # )
-# # def read_users(
-# #     skip: int = 0, limit: int = 10, session: Session = Depends(get_session)
-# # ):
-# #     users = session.scalars(select(User).offset(skip).limit(limit)).all()
+@router.delete(
+    '/{novelist_id}', status_code=HTTPStatus.OK, response_model=Message
+)
+def remove_novelist(
+    active_user: active_user,
+    novelist_id: int,
+    session: db_session,
+):
+    # Primeiro verifica se o novelist existe
+    existing_novelist = session.scalar(
+        select(Novelist).where(Novelist.id == novelist_id)
+    )
 
-# #     return {'users': users}
+    if not existing_novelist:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND, detail='Novelist not found'
+        )
 
+    session.delete(existing_novelist)
+    session.commit()
 
-# @router.delete('/', status_code=HTTPStatus.OK, response_model=Message)
-# def remove_user(
-#     current_user: Annotated[UserPublic, Depends(get_current_user)],
-#     session: Session = Depends(get_session),
-# ):
-#     try:
-
-#         session.execute(delete(User).where(User.id == current_user.id))
-#         session.commit()
-#     except Exception:
-
-#         raise HTTPException(HTTPStatus.NOT_FOUND, 'User Not Found')
-#     return {'message': 'Account Removed'}
+    return {'message': 'Novelist Removed'}

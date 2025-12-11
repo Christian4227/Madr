@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from typing import Annotated, Optional
@@ -23,7 +24,7 @@ settings = Settings()  # type: ignore
 def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     session: Annotated[Session, Depends(get_session)],
-):  # noqa: F821
+) -> User:  # noqa: F821
     credentials_exception = HTTPException(
         status_code=HTTPStatus.UNAUTHORIZED,
         detail='Could not validate credentials',
@@ -33,9 +34,8 @@ def get_current_user(
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
-        payload['sub'] = int(payload['sub'])
-        int_identifier = payload.get('sub')
-    except jwt.InvalidTokenError:
+        int_identifier = int(payload.get('sub'))
+    except (jwt.InvalidTokenError, ValueError, TypeError):
         raise credentials_exception
 
     user = session.scalar(select(User).where(User.id == int_identifier))
@@ -44,12 +44,21 @@ def get_current_user(
     return user
 
 
-def verify_password(plain_password: str, hashed_password: str) -> tuple:
-    return password_hash.verify_and_update(plain_password, hashed_password)
+def verify_password(
+    plain_password: str, hashed_password: str
+) -> tuple[bool, bool]:
+    """Retorna (is_valid, needs_rehash)"""
+    is_valid, new_hash = password_hash.verify_and_update(
+        plain_password, hashed_password
+    )
+    needs_rehash = new_hash is not None
+    return (is_valid, needs_rehash)
 
 
 def get_hash(plain_text: str) -> str:
-    return password_hash.hash(plain_text,)
+    return password_hash.hash(
+        plain_text,
+    )
 
 
 def generate_token(data: dict, exp_time_delta: Optional[timedelta] = None):
@@ -67,15 +76,27 @@ def generate_token(data: dict, exp_time_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 
+@dataclass
+class AuthResult:
+    authenticated: bool
+    user: Optional[User]
+    needs_rehash: bool
+
+
 def authenticate_user(
     session: Session, identity: str, password: str
-) -> Optional[User]:
+) -> AuthResult:
+    auth_result = AuthResult(False, None, False)
     user_db = session.scalar(
         select(User).where(
             (User.username == identity) | (User.email == identity)
         )
     )
-    if not (user_db and verify_password(password, user_db.password)):
-        return
+    if not user_db:
+        return auth_result
 
-    return user_db
+    is_valid, needs_rehash = verify_password(password, user_db.password)
+
+    if not is_valid:
+        return auth_result
+    return AuthResult(True, user_db, needs_rehash)

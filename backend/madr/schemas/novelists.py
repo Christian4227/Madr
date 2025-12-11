@@ -13,6 +13,10 @@ class NovelistBase(BaseModel):
 class NovelistSchema(NovelistBase): ...
 
 
+class NovelistUpdate(BaseModel):
+    name: str | None
+
+
 class NovelistPublic(NovelistBase):
     id: int
 
@@ -25,11 +29,3 @@ class NovelistDB(NovelistBase, DateSchema):
 
 class NovelistList(BaseModel):
     items: List[NovelistPublic]
-
-
-# @mapped_as_dataclass(table_registry)
-# class Novelist(DateMixin):
-#     __tablename__ = 'novelists'
-#     id: Mapped[int] = mapped_column(init=False, primary_key=True)
-#     name: Mapped[str] = mapped_column(unique=True)
-#     books: Mapped[List[Book]] = relationship(back_populates='novelist')

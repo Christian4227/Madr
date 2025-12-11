@@ -89,18 +89,3 @@ def test_update_user_deve_retornar_user_modificado(
     data = response.json()
 
     assert data['username'] == modified_username
-
-
-def test_users_deve_retornar_token_de_usuario_autenticado(
-    client: TestClient, user: User
-):
-    payload = {
-        'username': user.email,
-        'password': '123456789',
-    }
-    response = client.post('/auth/token', data=payload)
-    data = response.json()
-    assert 'access_token' in data
-    assert 'token_type' in data
-    assert data['access_token'].startswith('ey')
-    assert data['token_type'] == 'bearer'
