@@ -1,0 +1,168 @@
+.hero {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 72px;
+  font-family: "Calisto MT";
+}
+.heroMadrDesktop1Icon {
+  width: 635px;
+  object-fit: cover;
+}
+.divTitulo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.apresentacao {
+  align-self: stretch;
+  background-color: #fff2f2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 72px 24px;
+  gap: 32px;
+}
+.divCarrossel {
+  align-self: stretch;
+  overflow-x: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+  font-size: 24px;
+  color: #fff;
+  padding: 16px 0;
+}
+.divCard {
+  height: 355px;
+  width: 420px;
+  box-shadow: 0px 0px 7px 5px rgba(130, 18, 18, 0.25);
+  border-radius: 5px;
+  background-color: var(--cor-principal);
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.romanceRomantico1Icon {
+  align-self: stretch;
+  height: 234px;
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+.divCardSection {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 12px;
+  gap: 4px;
+}
+.divServicos {
+  align-self: stretch;
+  background-color: var(--cor-principal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  align-content: center;
+  padding: 144px 24px;
+}
+.divVantagens {
+  width: 1320px;
+  border-radius: 5px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  align-content: center;
+  padding: 32px 0px;
+  box-sizing: border-box;
+  gap: 64px;
+  max-width: 100%;
+}
+
+/* Base card for the advantages section */
+.cardVantagem {
+  height: 285px;
+  width: 360px;
+  border-radius: 5px;
+  background-color: #ffcccc;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  box-sizing: border-box;
+  gap: 24px;
+  box-shadow: 0px 0px 8px 5px rgba(255, 255, 255, 0.25);
+}
+
+.divPremios {
+  composes: cardVantagem;
+}
+
+.divInfoCadastro {
+  composes: cardVantagem;
+}
+
+.top1Parent {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.vantagemTitulo {
+  position: relative;
+}
+
+.diversosAutoresParent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Shared text style for advantages section */
+.textoVantagem {
+  position: relative;
+  font-size: 20px;
+  color: #fa7575;
+  text-align: center;
+}
+
+.meuArquivoDigital {
+  composes: textoVantagem;
+  font-size: 32px;
+  text-align: left;
+}
+
+.iconAutores1 {
+  width: 114px;
+  position: relative;
+  max-height: 100%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.divInfo {
+  width: 100%;
+  height: 159px;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  padding: 72px 24px;
+  box-sizing: border-box;
+}
