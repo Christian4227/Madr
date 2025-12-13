@@ -1,17 +1,21 @@
 from http import HTTPStatus
+from unittest.mock import Mock
 
 import ipdb  # noqa: F401
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from madr.core.database import get_session
 from madr.models.book import Book
 from madr.models.novelist import Novelist
+from madr.models.user import User
 from madr.schemas.novelists import NovelistSchema
 from madr.schemas.security import Token
 
 
-def test_novelist_deve_criar_e_retornar_novelist_com_id(
+def test_create_novelist_deve_retornar_novelist_com_id(
     client: TestClient,
     authenticated_header: Token,
 ):
@@ -27,7 +31,7 @@ def test_novelist_deve_criar_e_retornar_novelist_com_id(
     assert response.json() == {**payload, 'id': 1}
 
 
-def test_novelist_deve_falhar_ao_criar_e_retornar_conflito(
+def test_create_novelist_deve_falhar_retornar_conflito(
     client: TestClient, authenticated_header: Token, novelist: Novelist
 ):
     novelist_schema = NovelistSchema.model_validate(
@@ -45,7 +49,7 @@ def test_novelist_deve_falhar_ao_criar_e_retornar_conflito(
     assert response.json() == {'detail': 'Novelist has been exists'}
 
 
-def test_novelist_deve_falhar_na_criacao_por_nao_autorizado(
+def test_create_novelist_deve_falhar_com_nao_autorizacao(
     client: TestClient,
 ):
     payload = {'name': 'Zaraulstra'}
@@ -58,10 +62,9 @@ def test_novelist_deve_falhar_na_criacao_por_nao_autorizado(
     assert response.json() == {'detail': 'Not authenticated'}
 
 
-def test_remocao_novelist_deve_retornar_success_delecao(
+def test_delete_novelist_deve_retornar_success_delecao(
     client: TestClient,
     authenticated_header: Token,
-    session: Session,
     novelist_with_books: Novelist,
 ):
     response = client.delete(
@@ -74,7 +77,7 @@ def test_remocao_novelist_deve_retornar_success_delecao(
     assert response.status_code == HTTPStatus.OK
 
 
-def test_remocao_novelist_e_livros_deve_retornar_success_delecao(
+def test_delete_novelist_e_livros_deve_retornar_success(
     client: TestClient,
     authenticated_header: Token,
     session: Session,
@@ -91,13 +94,13 @@ def test_remocao_novelist_e_livros_deve_retornar_success_delecao(
     books = session.scalars(
         select(Book).where(Book.id_novelist == novelist_id)
     ).all()
-    assert len(books) == 0
 
+    assert len(books) == 0
     assert response.json() == {'message': 'Novelist Removed'}
     assert response.status_code == HTTPStatus.OK
 
 
-def test_remocao_user_deve_retornar_not_found_na_delecao(
+def test_delete_user_deve_retornar_not_found(
     client: TestClient,
     authenticated_header: Token,
     novelist_with_books: Novelist,
@@ -113,9 +116,8 @@ def test_remocao_user_deve_retornar_not_found_na_delecao(
     assert response.status_code == HTTPStatus.NOT_FOUND
 
 
-def test_remocao_user_deve_retornar_unauthorized_na_delecao(
+def test_delete_user_deve_retornar_unauthorized(
     client: TestClient,
-    authenticated_header: Token,
     novelist_with_books: Novelist,
 ):
     response = client.delete(f'/novelists/{novelist_with_books.id}')
@@ -146,30 +148,61 @@ def test_update_novelist_deve_retornar_novelist_modificado(
     assert data['name'] == modified_novelist_name
 
 
-# # def test_update_user_deve_retornar_success_delecao(
-# #     client: TestClient, authenticated_token: Token
-# # ):
+def test_update_novelist_deve_falhar_com_not_found(
+    client: TestClient, novelist: Novelist, authenticated_header: Token
+):
+    novelist_name = novelist.name
+    modified_novelist_name = f'modified_{novelist_name}'
 
-# #     response = client.delete(
-# #         '/users/',
-# #         headers={
-# #             'Authorization': f'Bearer : {authenticated_token.access_token}'
-# #         },
-# #     )
-# #     data = response.json()
-# #     assert data == {'message': 'Account Removed'}
+    payload = {
+        'name': modified_novelist_name,
+    }
+
+    response = client.put(
+        f'/novelists/{novelist.id + 89749}',
+        json=payload,
+        headers={
+            'Authorization': f'Bearer {authenticated_header.access_token}'
+        },
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+    assert response.json() == {'detail': 'Novelist not found'}
 
 
-# def test_novelist_deve_retornar_token_de_usuario_autenticado(
-#     client: TestClient, user: User
-# ):
-#     payload = {
-#         'username': user.email,
-#         'password': '123456789',
-#     }
-#     response = client.post('/auth/token', data=payload)
-#     data = response.json()
-#     assert 'access_token' in data
-#     assert 'token_type' in data
-#     assert data['access_token'].startswith('ey')
-#     assert data['token_type'] == 'bearer'
+def test_update_novelist_deve_falhar_com_rollback(
+    session: Session,
+    authenticated_header: Token,
+    user: User,
+    novelist: Novelist,
+):
+    from madr.app import app  # noqa: PLC0415
+
+    original_name = novelist.name
+    mock_session = Mock()
+    mock_session.scalar.side_effect = [user, novelist]
+    mock_session.commit.side_effect = SQLAlchemyError('DB Error')
+    mock_session.rollback = Mock()
+
+    def mock_get_session():
+        yield mock_session
+
+    try:
+        app.dependency_overrides[get_session] = mock_get_session
+        client = TestClient(app=app)
+
+        response = client.put(
+            f'/novelists/{novelist.id}',
+            json={'name': 'Will Fail'},
+            headers={
+                'Authorization': f'Bearer {authenticated_header.access_token}'
+            },
+        )
+
+        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+        mock_session.rollback.assert_called_once()
+        session.refresh(novelist)
+        assert novelist.name == original_name
+    finally:
+        app.dependency_overrides.clear()

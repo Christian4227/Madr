@@ -19,7 +19,7 @@ def test_create_novelist(session: Session):
     assert novelist.name == 'alice'
 
 
-def test_update_novelist(session: Session, novelist_with_books: Novelist):
+def test_novelist_update(session: Session, novelist_with_books: Novelist):
     name = novelist_with_books.name
     novelist_with_books.name = f'modified_{name}'
     session.add(novelist_with_books)

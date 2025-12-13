@@ -14,9 +14,7 @@ class UserFactory(factory.Factory):
 
     username = factory.Sequence(lambda n: f'test_name_{n}')
     email = factory.LazyAttribute(lambda obj: f'{obj.username}@test.com')
-    password = factory.Sequence(
-        lambda n: f'test_pwd_{n}'
-    )
+    password = factory.Sequence(lambda n: f'test_pwd_{n}')
 
 
 class NovelistFactory(factory.Factory):
@@ -35,5 +33,4 @@ class BookFactory(factory.Factory):
         lambda: str(fuzzy.FuzzyInteger(1560, datetime.now().year).fuzz())
     )
     title = factory.Sequence(lambda n: f'book_title_{n}')
-    id_novelist = factory.SelfAttribute('novelist.id')
-    novelist = factory.SubFactory(NovelistFactory)
+    id_novelist = None

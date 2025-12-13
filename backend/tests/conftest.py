@@ -10,6 +10,8 @@ from sqlalchemy.pool import StaticPool
 from madr.app import app
 from madr.core.security import generate_token, get_hash
 from madr.models import table_registry
+from madr.models.book import Book
+from madr.models.novelist import Novelist
 from madr.models.user import User
 from madr.schemas.security import Token
 from tests.factories import BookFactory, NovelistFactory, UserFactory
@@ -69,9 +71,7 @@ def novelist_with_books(session: Session):
     session.add(new_novelist)
     session.flush()
 
-    books = BookFactory.build_batch(
-        size=25, id_novelist=new_novelist.id, novelist=new_novelist
-    )
+    books = BookFactory.build_batch(size=25, id_novelist=new_novelist.id)
     session.add_all(books)
     session.commit()
     session.refresh(new_novelist)
@@ -104,18 +104,10 @@ def users(session: Session):
     return list_users
 
 
-# @pytest.fixture
-# def books(session: Session):
-#     list_users: List[User] = []
-#     for n in range(11):
-#         new_user = Book(
-
-
-#             username=f'alice_{n + 1}',
-#             password=f'secret-{n + 1}',
-#             email=f'teste{n + 1}@test',
-#         )
-#         session.add(new_user)
-#         list_users.append(new_user)
-#     session.commit()
-#     return list_users
+@pytest.fixture
+def book(session: Session, novelist: Novelist) -> Book:
+    book = BookFactory.build(id_novelist=novelist.id)
+    session.add(book)
+    session.commit()
+    session.refresh(book)
+    return book

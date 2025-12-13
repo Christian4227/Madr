@@ -10,7 +10,12 @@ from madr.core.security import get_hash
 from madr.dependecies import active_user, db_session
 from madr.models.user import User
 from madr.schemas import Message
-from madr.schemas.user import UserCreate, UserPublic, UserUpdate
+from madr.schemas.user import (
+    UserCreate,
+    UserList,
+    UserPublic,
+    UserUpdate,
+)
 
 router = APIRouter(prefix='/users', tags=['users'])
 
@@ -27,14 +32,22 @@ def create_user(user: UserCreate, session: Session = Depends(get_session)):
         raise HTTPException(HTTPStatus.CONFLICT, detail='User has been exists')
     db_user = User(**user.model_dump(exclude_unset=True))
     db_user.password = get_hash(db_user.password)
-    session.add(db_user)
-    session.commit()
-    session.refresh(db_user)
+    try:
+        session.add(db_user)
+        session.commit()
+        session.refresh(db_user)
+    except Exception:
+        session.rollback()
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail='Failed to create user',
+        )
+
     return db_user
 
 
-@router.put('/', status_code=HTTPStatus.CREATED, response_model=UserPublic)
-def udpate_user(
+@router.put('/', status_code=HTTPStatus.OK, response_model=UserPublic)
+def update_user(
     active_user: active_user, user: UserUpdate, session: db_session
 ):
 
@@ -55,17 +68,17 @@ def udpate_user(
     return active_user
 
 
-# @router.get(
-#     '/',
-#     status_code=HTTPStatus.OK,
-#     response_model=UserList,
-# )
-# def read_users(
-#     skip: int = 0, limit: int = 10, session: Session = Depends(get_session)
-# ):
-#     users = session.scalars(select(User).offset(skip).limit(limit)).all()
+@router.get(
+    '/',
+    status_code=HTTPStatus.OK,
+    response_model=UserList,
+)
+def read_users(
+    skip: int = 0, limit: int = 10, session: Session = Depends(get_session)
+):
+    users = session.scalars(select(User).offset(skip).limit(limit)).all()
 
-#     return {'users': users}
+    return {'users': users}
 
 
 @router.delete('/', status_code=HTTPStatus.OK, response_model=Message)
@@ -74,6 +87,13 @@ def remove_user(
     session: Session = Depends(get_session),
 ):
     session.execute(delete(User).where(User.id == active_user.id))
-    session.commit()
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail='Failed to delete user',
+        )
 
     return {'message': 'Account Removed'}

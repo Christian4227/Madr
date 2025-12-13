@@ -28,4 +28,6 @@ class Book(DateMixin):
 
     id_novelist: Mapped[int] = mapped_column(ForeignKey('novelists.id'))
 
-    novelist: Mapped[Novelist] = relationship(back_populates='books')
+    novelist: Mapped[Novelist] = relationship(
+        init=False, back_populates='books'
+    )

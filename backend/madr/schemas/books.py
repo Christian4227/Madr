@@ -12,7 +12,8 @@ class BaseBook(BaseModel):
     title: str
 
 
-class BookSchema(BaseBook): ...
+class BookCreate(BaseBook):
+    id_novelist: int
 
 
 class BookPublic(BaseModel):
@@ -21,9 +22,8 @@ class BookPublic(BaseModel):
     model_config = {'from_attributes': True}
 
 
-class DbBook(DateSchema, BaseModel):
+class BookDb(DateSchema, BookCreate):
     id: int
-    id_novelist: int
     novelist: Novelist
     model_config = {'from_attributes': True}
 
