@@ -30,12 +30,24 @@ def get_current_user(
         detail='Could not validate credentials',
         headers={'WWW-Authenticate': 'Bearer'},
     )
+    credentials_expired = HTTPException(
+        status_code=HTTPStatus.UNAUTHORIZED,
+        detail='Expired token',
+        headers={'WWW-Authenticate': 'Bearer'},
+    )
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
         int_identifier = int(payload.get('sub'))
-    except (jwt.InvalidTokenError, ValueError, TypeError):
+    except jwt.ExpiredSignatureError:
+        raise credentials_expired
+    except (
+        jwt.DecodeError,
+        jwt.InvalidTokenError,
+        ValueError,
+        TypeError,
+    ):
         raise credentials_exception
 
     user = session.scalar(select(User).where(User.id == int_identifier))

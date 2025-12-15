@@ -29,7 +29,7 @@ def create_user(user: UserCreate, session: Session = Depends(get_session)):
 
     existing_user = session.scalar(stmt)
     if existing_user:
-        raise HTTPException(HTTPStatus.CONFLICT, detail='User has been exists')
+        raise HTTPException(HTTPStatus.CONFLICT, detail='User alredy exists')
     db_user = User(**user.model_dump(exclude_unset=True))
     db_user.password = get_hash(db_user.password)
     try:

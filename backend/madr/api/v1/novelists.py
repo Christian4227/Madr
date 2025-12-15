@@ -20,7 +20,7 @@ router = APIRouter(prefix='/novelists', tags=['novelists'])
     '/', status_code=HTTPStatus.CREATED, response_model=NovelistPublic
 )
 def create_novelist(
-    current_user: active_user,
+    _: active_user,
     novelist: NovelistSchema,
     session: db_session,
 ):
@@ -28,7 +28,7 @@ def create_novelist(
     existing_novelist = session.scalar(stmt)
     if existing_novelist:
         raise HTTPException(
-            HTTPStatus.CONFLICT, detail='Novelist has been exists'
+            HTTPStatus.CONFLICT, detail='Novelist alredy exists'
         )
     db_novelist = Novelist(**novelist.model_dump())
     session.add(db_novelist)
@@ -41,7 +41,7 @@ def create_novelist(
     '/{novelist_id}', status_code=HTTPStatus.OK, response_model=NovelistPublic
 )
 def update_novelist(
-    active_user: active_user,
+    _: active_user,
     novelist_id: int,
     novelist: NovelistUpdate,
     session: db_session,

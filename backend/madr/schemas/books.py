@@ -1,6 +1,6 @@
 from typing import List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from madr.models.novelist import Novelist
 from madr.schemas.mixins import DateSchema
@@ -13,7 +13,8 @@ class BaseBook(BaseModel):
 
 
 class BookCreate(BaseBook):
-    id_novelist: int
+    model_config = {'populate_by_name': True}
+    id_novelist: int = Field(alias='idNovelist')
 
 
 class BookPublic(BaseModel):

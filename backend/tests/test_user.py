@@ -47,16 +47,16 @@ def test_users_deve_retornar_excessao_conflito_409(
 
     assert response.status_code == HTTPStatus.CONFLICT
 
-    assert response.json() == {'detail': 'User has been exists'}
+    assert response.json() == {'detail': 'User alredy exists'}
 
 
 def test_update_user_deve_retornar_success_delecao(
-    client: TestClient, authenticated_header: Token
+    client: TestClient, authenticated_token: Token
 ):
     response = client.delete(
         base_url,
         headers={
-            'Authorization': f'Bearer {authenticated_header.access_token}'
+            'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
 
@@ -65,7 +65,7 @@ def test_update_user_deve_retornar_success_delecao(
 
 
 def test_update_user_deve_retornar_user_modificado(
-    client: TestClient, user: User, authenticated_header: Token
+    client: TestClient, user: User, authenticated_token: Token
 ):
     username = user.username
     modified_username = f'modified_{username}'
@@ -78,7 +78,7 @@ def test_update_user_deve_retornar_user_modificado(
         base_url,
         json=payload,
         headers={
-            'Authorization': f'Bearer {authenticated_header.access_token}'
+            'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
 
@@ -90,7 +90,7 @@ def test_update_user_deve_retornar_user_modificado(
 def test_update_user_nao_deve_atualizar_password(
     client: TestClient,
     user: User,
-    authenticated_header: Token,
+    authenticated_token: Token,
     session: Session,
 ):
     original_password = user.password
@@ -104,7 +104,7 @@ def test_update_user_nao_deve_atualizar_password(
         base_url,
         json=payload,
         headers={
-            'Authorization': f'Bearer {authenticated_header.access_token}'
+            'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
 
@@ -154,7 +154,7 @@ def test_create_user_deve_falhar_com_rollback(session: Session):
 
 def test_update_user_deve_falhar_com_rollback(
     session: Session,
-    authenticated_header: Token,
+    authenticated_token: Token,
     user: User,
 ):
 
@@ -191,7 +191,7 @@ def test_update_user_deve_falhar_com_rollback(
             base_url,
             json=user_data_to_update,
             headers={
-                'Authorization': f'Bearer {authenticated_header.access_token}'
+                'Authorization': f'Bearer {authenticated_token.access_token}'
             },
         )
 
@@ -206,7 +206,7 @@ def test_update_user_deve_falhar_com_rollback(
 
 
 def test_delete_user_deve_falhar_com_rollback(
-    session: Session, client: TestClient, authenticated_header: Token
+    session: Session, client: TestClient, authenticated_token: Token
 ):
     mock_session = Mock()
 
@@ -224,7 +224,7 @@ def test_delete_user_deve_falhar_com_rollback(
         response = client.delete(
             base_url,
             headers={
-                'Authorization': f'Bearer {authenticated_header.access_token}'
+                'Authorization': f'Bearer {authenticated_token.access_token}'
             },
         )
 

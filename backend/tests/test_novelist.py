@@ -1,8 +1,10 @@
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from unittest.mock import Mock
 
 import ipdb  # noqa: F401
 from fastapi.testclient import TestClient
+from freezegun import freeze_time
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -14,17 +16,19 @@ from madr.models.user import User
 from madr.schemas.novelists import NovelistSchema
 from madr.schemas.security import Token
 
+url_base = '/novelists/'
+
 
 def test_create_novelist_deve_retornar_novelist_com_id(
     client: TestClient,
-    authenticated_header: Token,
+    authenticated_token: Token,
 ):
     payload = {'name': 'Zaraulstra'}
     response = client.post(
-        '/novelists/',
+        url_base,
         json=payload,
         headers={
-            'Authorization': f'Bearer {authenticated_header.access_token}'
+            'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
     assert response.status_code == HTTPStatus.CREATED
@@ -32,21 +36,21 @@ def test_create_novelist_deve_retornar_novelist_com_id(
 
 
 def test_create_novelist_deve_falhar_retornar_conflito(
-    client: TestClient, authenticated_header: Token, novelist: Novelist
+    client: TestClient, authenticated_token: Token, novelist: Novelist
 ):
     novelist_schema = NovelistSchema.model_validate(
         novelist, from_attributes=True
     )
     payload = novelist_schema.model_dump()
     response = client.post(
-        '/novelists/',
+        url_base,
         json=payload,
         headers={
-            'Authorization': f'Bearer {authenticated_header.access_token}'
+            'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
     assert response.status_code == HTTPStatus.CONFLICT
-    assert response.json() == {'detail': 'Novelist has been exists'}
+    assert response.json() == {'detail': 'Novelist alredy exists'}
 
 
 def test_create_novelist_deve_falhar_com_nao_autorizacao(
@@ -54,7 +58,7 @@ def test_create_novelist_deve_falhar_com_nao_autorizacao(
 ):
     payload = {'name': 'Zaraulstra'}
     response = client.post(
-        '/novelists/',
+        url_base,
         json=payload,
         headers={},
     )
@@ -64,13 +68,13 @@ def test_create_novelist_deve_falhar_com_nao_autorizacao(
 
 def test_delete_novelist_deve_retornar_success_delecao(
     client: TestClient,
-    authenticated_header: Token,
+    authenticated_token: Token,
     novelist_with_books: Novelist,
 ):
     response = client.delete(
         f'/novelists/{novelist_with_books.id}',
         headers={
-            'Authorization': f'Bearer {authenticated_header.access_token}'
+            'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
     assert response.json() == {'message': 'Novelist Removed'}
@@ -79,7 +83,7 @@ def test_delete_novelist_deve_retornar_success_delecao(
 
 def test_delete_novelist_e_livros_deve_retornar_success(
     client: TestClient,
-    authenticated_header: Token,
+    authenticated_token: Token,
     session: Session,
     novelist_with_books: Novelist,
 ):
@@ -87,7 +91,7 @@ def test_delete_novelist_e_livros_deve_retornar_success(
     response = client.delete(
         f'/novelists/{novelist_id}',
         headers={
-            'Authorization': f'Bearer {authenticated_header.access_token}'
+            'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
 
@@ -102,13 +106,13 @@ def test_delete_novelist_e_livros_deve_retornar_success(
 
 def test_delete_user_deve_retornar_not_found(
     client: TestClient,
-    authenticated_header: Token,
+    authenticated_token: Token,
     novelist_with_books: Novelist,
 ):
     response = client.delete(
         f'/novelists/{novelist_with_books.id + 15674}',
         headers={
-            'Authorization': f'Bearer {authenticated_header.access_token}'
+            'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
     assert response.json() == {'detail': 'Novelist not found'}
@@ -126,7 +130,9 @@ def test_delete_user_deve_retornar_unauthorized(
 
 
 def test_update_novelist_deve_retornar_novelist_modificado(
-    client: TestClient, novelist: Novelist, authenticated_header: Token
+    client: TestClient,
+    novelist: Novelist,
+    authenticated_token: Token,
 ):
     novelist_name = novelist.name
     modified_novelist_name = f'modified_{novelist_name}'
@@ -139,7 +145,7 @@ def test_update_novelist_deve_retornar_novelist_modificado(
         f'/novelists/{novelist.id}',
         json=payload,
         headers={
-            'Authorization': f'Bearer {authenticated_header.access_token}'
+            'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
 
@@ -149,7 +155,7 @@ def test_update_novelist_deve_retornar_novelist_modificado(
 
 
 def test_update_novelist_deve_falhar_com_not_found(
-    client: TestClient, novelist: Novelist, authenticated_header: Token
+    client: TestClient, novelist: Novelist, authenticated_token: Token
 ):
     novelist_name = novelist.name
     modified_novelist_name = f'modified_{novelist_name}'
@@ -162,7 +168,7 @@ def test_update_novelist_deve_falhar_com_not_found(
         f'/novelists/{novelist.id + 89749}',
         json=payload,
         headers={
-            'Authorization': f'Bearer {authenticated_header.access_token}'
+            'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
 
@@ -173,7 +179,7 @@ def test_update_novelist_deve_falhar_com_not_found(
 
 def test_update_novelist_deve_falhar_com_rollback(
     session: Session,
-    authenticated_header: Token,
+    authenticated_token: Token,
     user: User,
     novelist: Novelist,
 ):
@@ -196,7 +202,7 @@ def test_update_novelist_deve_falhar_com_rollback(
             f'/novelists/{novelist.id}',
             json={'name': 'Will Fail'},
             headers={
-                'Authorization': f'Bearer {authenticated_header.access_token}'
+                'Authorization': f'Bearer {authenticated_token.access_token}'
             },
         )
 
@@ -206,3 +212,70 @@ def test_update_novelist_deve_falhar_com_rollback(
         assert novelist.name == original_name
     finally:
         app.dependency_overrides.clear()
+
+
+# initial_datetime = datetime.now(timezone.utc) + timedelta(minutes=6)
+#     with freeze_time(initial_datetime) as frozen_datetime:  # noqa: F841
+#         response = client.post(
+#             base_url,
+#             headers={
+#                 'Authorization': f'Bearer {authenticated_token.access_token}'
+#             },
+#             json=book_payload,
+#         )
+#         data = response.json()
+#         # ipdb.set_trace()
+#         assert data == {'detail': 'Expired token'}
+
+
+def test_create_novelist_deve_falhar_com_token_expirado(
+    session: Session,
+    client: TestClient,
+    authenticated_token: Token,
+):
+    payload = {'name': 'Zaraulstra da Bahia'}
+
+    initial_datetime = datetime.now(timezone.utc) + timedelta(minutes=6)
+    with freeze_time(initial_datetime) as frozen_datetime:  # noqa: F841
+        response = client.post(
+            url_base,
+            json=payload,
+            headers={
+                'Authorization': f'Bearer {authenticated_token.access_token}'
+            },
+        )
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        db_novelist = session.scalar(
+            select(Novelist).where(Novelist.name == payload['name'])
+        )
+        assert db_novelist is None
+        assert response.json() == {'detail': 'Expired token'}
+
+
+def test_update_novelist_deve_falhar_com_token_expirado(
+    session: Session,
+    client: TestClient,
+    novelist: Novelist,
+    authenticated_token: Token,
+):
+    novelist_name = novelist.name
+    modified_novelist_name = f'modified_{novelist_name}'
+
+    payload = {
+        'name': modified_novelist_name,
+    }
+    initial_datetime = datetime.now(tz=timezone.utc) + timedelta(6)
+    with freeze_time(initial_datetime) as frozen_time:  # noqa: F841
+        response = client.put(
+            f'/novelists/{novelist.id}',
+            json=payload,
+            headers={
+                'Authorization': f'Bearer {authenticated_token.access_token}'
+            },
+        )
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        db_novelist = session.scalar(
+            select(Novelist).where(Novelist.name == payload['name'])
+        )
+        assert db_novelist is None
+        assert response.json() == {'detail': 'Expired token'}

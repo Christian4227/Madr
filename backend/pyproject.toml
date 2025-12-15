@@ -23,6 +23,7 @@ dev-dependencies = [
     "alembic>=1.17.2",
     "ipdb",
     "factory-boy>=3.3.3",
+    "freezegun>=1.5.5",
 ]
 
 [build-system]

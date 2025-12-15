@@ -13,6 +13,7 @@ from madr.models import table_registry
 from madr.models.book import Book
 from madr.models.novelist import Novelist
 from madr.models.user import User
+from madr.schemas.books import BookCreate
 from madr.schemas.security import Token
 from tests.factories import BookFactory, NovelistFactory, UserFactory
 
@@ -36,7 +37,17 @@ def session():
         connect_args={'check_same_thread': False},
         poolclass=StaticPool,
     )
+
+    from sqlalchemy import event  # noqa: PLC0415
+
+    @event.listens_for(engine, 'connect')
+    def enabel_sqlite_fk(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute('PRAGMA foreign_keys=ON')
+        cursor.close()
+
     table_registry.metadata.create_all(engine)
+
     with Session(engine) as session:
         yield session
 
@@ -79,7 +90,7 @@ def novelist_with_books(session: Session):
 
 
 @pytest.fixture
-def authenticated_header(user: User):
+def authenticated_token(user: User):
     token_delta_expire_time = timedelta(minutes=5)
 
     data = {'sub': user.id, 'username': user.username, 'email': user.email}
@@ -111,3 +122,11 @@ def book(session: Session, novelist: Novelist) -> Book:
     session.commit()
     session.refresh(book)
     return book
+
+
+@pytest.fixture
+def book_payload(novelist: Novelist) -> dict:
+    book = BookFactory.build(id_novelist=novelist.id)
+    book_validated = BookCreate.model_validate(book, from_attributes=True)
+    payload = book_validated.model_dump(by_alias=True)
+    return payload
