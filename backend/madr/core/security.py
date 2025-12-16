@@ -16,7 +16,7 @@ from madr.core.database import get_session
 from madr.models.user import User
 
 password_hash = PasswordHash.recommended()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/auth/token')
 
 settings = Settings()  # type: ignore
 
