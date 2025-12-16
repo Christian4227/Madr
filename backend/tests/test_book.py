@@ -2,19 +2,26 @@ from datetime import timedelta
 from http import HTTPStatus
 from unittest.mock import Mock
 
-import ipdb  # noqa: F401
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from madr.app import app
+from madr.core.database import get_session
 from madr.models.book import Book
+from madr.models.novelist import Novelist
 from madr.models.user import User
 from madr.schemas.security import Token
 from tests.utils import frozen_context
 
 base_url = '/books/'
+
+
+# ============================================================================
+# CREATE TESTS
+# ============================================================================
 
 
 def test_create_book_deve_ter_exito_e_retornar_book_com_id(
@@ -29,7 +36,6 @@ def test_create_book_deve_ter_exito_e_retornar_book_com_id(
             'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
-
     assert response.status_code == HTTPStatus.CREATED
 
 
@@ -39,14 +45,13 @@ def test_create_book_deve_falhar_com_conflict(
     authenticated_token: Token,
     book: Book,
 ):
-
     response = client.post(
         base_url,
         json={
-            'id_novelist': book.id_novelist,
+            'idNovelist': book.id_novelist,
             'name': book.name,
             'year': '2017',
-            'title': 'The First Fifteen Lives of Harry August',
+            'title': 'Modified Title',
         },
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -56,51 +61,56 @@ def test_create_book_deve_falhar_com_conflict(
     assert response.status_code == HTTPStatus.CONFLICT
     assert response.json()['detail'] == 'Book already exists'
 
-    books = session.scalars(select(Book).where(Book.name == book.name)).all()
+    db_books = session.scalars(
+        select(Book).where(Book.name == book.name)
+    ).all()
+    assert len(db_books) == 1
 
-    assert len(books) == 1
 
-
-def test_create_book_deve_falhar_com_erro_de_banco_e_rollback(
+def test_create_book_deve_falhar_por_nao_existir_romancista(
     session: Session,
     authenticated_token: Token,
+    client: TestClient,
     book_payload: dict,
-    user: User,
 ):
-    from madr.app import app  # noqa: PLC0415
-    from madr.core.database import get_session  # noqa: PLC0415
+    book_payload['idNovelist'] = 99999
+    response = client.post(
+        base_url,
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+        json=book_payload,
+    )
 
-    mock_session = Mock()
-    mock_session.scalar.side_effect = [user, None]
-    mock_session.commit.side_effect = SQLAlchemyError('DB Error')
-    mock_session.rollback = Mock()
+    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert response.json() == {'detail': 'Novelist not found'}
 
-    def mock_get_session():
-        yield mock_session
+    db_book = session.scalar(
+        select(Book).where(Book.name == book_payload['name'])
+    )
+    assert db_book is None
 
-    try:
-        app.dependency_overrides[get_session] = mock_get_session
-        client = TestClient(app=app)
 
-        response = client.post(
-            base_url,
-            json=book_payload,
-            headers={
-                'Authorization': f'Bearer {authenticated_token.access_token}'
-            },
-        )
+def test_create_book_deve_falhar_sem_authorization(
+    client: TestClient,
+    book_payload: dict,
+):
+    response = client.post(base_url, json=book_payload)
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    assert response.json()['detail'] == 'Not authenticated'
 
-        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
-        assert response.json() == {'detail': 'Database error'}
-        mock_session.rollback.assert_called_once()
 
-        # Verifica que livro não foi criado no banco real
-        book_db = session.scalar(
-            select(Book).where(Book.name == book_payload['name'])
-        )
-        assert book_db is None
-    finally:
-        app.dependency_overrides.clear()
+def test_create_book_deve_falhar_sem_token_valido(
+    client: TestClient,
+    book_payload: dict,
+):
+    response = client.post(
+        base_url,
+        headers={'Authorization': 'Bearer eyasdasdasd'},
+        json=book_payload,
+    )
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    assert response.json()['detail'] == 'Could not validate credentials'
 
 
 def test_create_book_deve_falhar_por_token_expirado(
@@ -117,68 +127,35 @@ def test_create_book_deve_falhar_por_token_expirado(
             },
             json=book_payload,
         )
-        data = response.json()
+
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response.json() == {'detail': 'Expired token'}
+
         db_book = session.scalar(
             select(Book).where(Book.name == book_payload['name'])
         )
-
         assert db_book is None
-        assert data == {'detail': 'Expired token'}
 
 
-def test_create_book_deve_falhar_por_nao_existir_romancista(
-    session: Session,
+def test_create_book_deve_falhar_user_removido(
     authenticated_token: Token,
-    client: TestClient,
     book_payload: dict,
+    client: TestClient,
+    session: Session,
 ):
-    # aponta pra romacista inexistente
-    book_payload['idNovelist'] = '99999'
+    session.execute(delete(User))
+    session.commit()
+
     response = client.post(
         base_url,
+        json=book_payload,
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
         },
-        json=book_payload,
     )
-
-    db_book = session.scalar(
-        select(Book).where(Book.name == book_payload['name'])
-    )
-    data = response.json()
-
-    assert db_book is None
-    assert data == {'detail': 'Novelist not found'}
-    assert response.status_code == HTTPStatus.NOT_FOUND
-
-
-def test_create_book_deve_falhar_sem_token_valido(
-    client: TestClient,
-    book_payload: dict,
-):
-    response = client.post(
-        base_url,
-        headers={'Authorization': 'Bearer eyasdasdasd'},
-        json=book_payload,
-    )
-    data = response.json()
 
     assert response.status_code == HTTPStatus.UNAUTHORIZED
-    assert data['detail'] == 'Could not validate credentials'
-
-
-def test_create_book_deve_falhar_sem_authorization(
-    client: TestClient,
-    book_payload: dict,
-):
-    response = client.post(
-        base_url,
-        json=book_payload,
-    )
-    data = response.json()
-
-    assert response.status_code == HTTPStatus.UNAUTHORIZED
-    assert data['detail'] == 'Not authenticated'
+    assert response.json() == {'detail': 'Could not validate credentials'}
 
 
 @pytest.mark.parametrize(
@@ -186,7 +163,7 @@ def test_create_book_deve_falhar_sem_authorization(
     ['name', 'year', 'title', 'idNovelist'],
 )
 def test_create_book_deve_falhar_sem_campos_obrigatorios(
-    field_missing,
+    field_missing: str,
     client: TestClient,
     authenticated_token: Token,
     book_payload: dict,
@@ -199,22 +176,55 @@ def test_create_book_deve_falhar_sem_campos_obrigatorios(
         },
         json=book_payload,
     )
-    data = response.json()
-    for detail in data['detail']:
-        if detail['type'] == 'missing':
-            assert field_missing == detail['loc'][1]
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+    errors = response.json()['detail']
+    assert any(
+        err['type'] == 'missing' and err['loc'][1] == field_missing
+        for err in errors
+    )
 
 
-def test_create_book_deve_falhar_user_removido(
+@pytest.mark.parametrize(
+    'field',
+    ['name', 'year', 'title', 'idNovelist'],
+)
+def test_create_book_deve_falhar_com_null_em_campos_obrigatorios(
+    field: str,
+    client: TestClient,
     authenticated_token: Token,
     book_payload: dict,
-    client: TestClient,
-    session: Session,
 ):
-    # remover o user a qual o access_token pertence
-    session.execute(delete(User))
+    book_payload[field] = None
+    response = client.post(
+        base_url,
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+        json=book_payload,
+    )
+
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+    errors = response.json()['detail']
+    assert any(err['loc'][1] == field for err in errors)
+
+
+def test_create_book_deve_falhar_com_erro_de_banco_e_rollback(
+    session: Session,
+    authenticated_token: Token,
+    book_payload: dict,
+    user: User,
+):
+    mock_session = Mock(spec=Session)
+    mock_session.scalar.return_value = user
+    mock_session.commit.side_effect = SQLAlchemyError('Database error')
+
+    def mock_get_session():
+        yield mock_session
+
+    app.dependency_overrides[get_session] = mock_get_session
+    client = TestClient(app=app)
+
     response = client.post(
         base_url,
         json=book_payload,
@@ -222,9 +232,15 @@ def test_create_book_deve_falhar_user_removido(
             'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
-    assert response.status_code == HTTPStatus.UNAUTHORIZED
-    data = response.json()
-    assert data == {'detail': 'Could not validate credentials'}
+
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+    assert response.json() == {'detail': 'Database error'}
+    mock_session.rollback.assert_called_once()
+
+    db_book = session.scalar(
+        select(Book).where(Book.name == book_payload['name'])
+    )
+    assert db_book is None
 
 
 def test_create_book_deve_falhar_integrity_error_generico(
@@ -232,79 +248,18 @@ def test_create_book_deve_falhar_integrity_error_generico(
     book_payload: dict,
     user: User,
 ):
-    from sqlalchemy.exc import IntegrityError  # noqa: PLC0415
-
-    from madr.app import app  # noqa: PLC0415
-    from madr.core.database import get_session  # noqa: PLC0415
-
-    mock_session = Mock()
-    mock_session.scalar.side_effect = [user, None]
-    # IntegrityError que não é FK nem unique
+    mock_session = Mock(spec=Session)
+    mock_session.scalar.return_value = user
     mock_session.commit.side_effect = IntegrityError(
         'statement', 'params', Exception('check constraint failed')
     )
-    mock_session.rollback = Mock()
 
     def mock_get_session():
         yield mock_session
 
-    try:
-        app.dependency_overrides[get_session] = mock_get_session
-        client = TestClient(app=app)
+    app.dependency_overrides[get_session] = mock_get_session
+    client = TestClient(app=app)
 
-        response = client.post(
-            base_url,
-            json=book_payload,
-            headers={
-                'Authorization': f'Bearer {authenticated_token.access_token}'
-            },
-        )
-
-        assert response.status_code == HTTPStatus.CONFLICT
-        assert response.json() == {'detail': 'Integrity violation'}
-        mock_session.rollback.assert_called_once()
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_create_book_deve_falhar_exception_generica(
-    authenticated_token: Token,
-    book_payload: dict,
-    user: User,
-):
-    from madr.app import app  # noqa: PLC0415
-    from madr.core.database import get_session  # noqa: PLC0415
-
-    mock_session = Mock()
-    mock_session.scalar.side_effect = [user, None]
-    mock_session.commit.side_effect = Exception('Unexpected error')
-
-    def mock_get_session():
-        yield mock_session
-
-    try:
-        app.dependency_overrides[get_session] = mock_get_session
-        client = TestClient(app=app)
-
-        response = client.post(
-            base_url,
-            json=book_payload,
-            headers={
-                'Authorization': f'Bearer {authenticated_token.access_token}'
-            },
-        )
-
-        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
-        assert response.json() == {'detail': 'Internal error'}
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_update_book_deve_ter_exito_e_retornar_book_modificado(
-    client: TestClient,
-    authenticated_token: Token,
-    book_payload: dict,
-):
     response = client.post(
         base_url,
         json=book_payload,
@@ -313,4 +268,178 @@ def test_update_book_deve_ter_exito_e_retornar_book_modificado(
         },
     )
 
-    assert response.status_code == HTTPStatus.CREATED
+    assert response.status_code == HTTPStatus.CONFLICT
+    assert response.json() == {'detail': 'Integrity violation'}
+    mock_session.rollback.assert_called_once()
+
+
+def test_create_book_falha_exception_generica(
+    authenticated_token: Token, book_payload: dict, user: User
+):
+    mock_session = Mock(spec=Session)
+    mock_session.scalar.return_value = user
+    mock_session.commit.side_effect = Exception('Unexpected error')
+
+    def mock_get_session():
+        yield mock_session
+
+    app.dependency_overrides[get_session] = mock_get_session
+    client = TestClient(app)
+
+    response = client.post(
+        base_url,
+        json=book_payload,
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+    )
+
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+    assert response.json() == {'detail': 'Internal error'}
+
+
+# ============================================================================
+# UPDATE TESTS
+# ============================================================================
+
+
+def test_update_book_deve_ter_exito_e_retornar_book_modificado(
+    client: TestClient,
+    authenticated_token: Token,
+    book: Book,
+):
+    payload = {'title': 'Modified Title'}
+    response = client.put(
+        f'{base_url}{book.id}',
+        json=payload,
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json()['title'] == 'Modified Title'
+
+
+def test_update_book_deve_falhar_book_not_found(
+    client: TestClient,
+    authenticated_token: Token,
+):
+    payload = {'title': 'Modified Title'}
+    response = client.put(
+        f'{base_url}99999',
+        json=payload,
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert response.json() == {'detail': 'Book not found'}
+
+
+def test_update_book_deve_falhar_por_nao_existir_romancista(
+    novelist: Novelist,
+    session: Session,
+    authenticated_token: Token,
+    client: TestClient,
+    book: Book,
+):
+    payload = {'idNovelist': novelist.id + 10}
+    response = client.put(
+        f'{base_url}{book.id}',
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+        json=payload,
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert response.json() == {'detail': 'Novelist not found'}
+
+
+def test_update_book_deve_falhar_unique_violation(
+    book: Book,
+    client: TestClient,
+    authenticated_token: Token,
+    session: Session,
+):
+    book_name_existent = book.name
+
+    other_book = Book(
+        name='other_book',
+        year='2020',
+        title='Other',
+        id_novelist=book.id_novelist,
+    )
+    session.add(other_book)
+    session.commit()
+
+    response = client.put(
+        f'{base_url}{other_book.id}',
+        json={'name': book_name_existent},
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+    )
+
+    assert response.status_code == HTTPStatus.CONFLICT
+    assert response.json() == {'detail': 'Book already exists'}
+
+
+def test_update_book_deve_falhar_com_erro_de_banco_e_rollback(
+    authenticated_token: Token,
+    user: User,
+    book: Book,
+):
+    mock_session = Mock(spec=Session)
+    mock_session.scalar.side_effect = [user, book]
+    mock_session.commit.side_effect = SQLAlchemyError('DB Error')
+
+    def mock_get_session():
+        yield mock_session
+
+    app.dependency_overrides[get_session] = mock_get_session
+    client = TestClient(app=app)
+
+    response = client.put(
+        f'{base_url}{book.id}',
+        json={'title': 'New Title'},
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+    )
+
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+    assert response.json() == {'detail': 'Database error'}
+    mock_session.rollback.assert_called_once()
+
+
+def test_update_book_deve_falhar_integrity_error_generico(
+    authenticated_token: Token,
+    user: User,
+    book: Book,
+):
+    mock_session = Mock(spec=Session)
+    mock_session.scalar.side_effect = [user, book]
+    mock_session.commit.side_effect = IntegrityError(
+        'statement', 'params', Exception('check constraint failed')
+    )
+
+    def mock_get_session():
+        yield mock_session
+
+    app.dependency_overrides[get_session] = mock_get_session
+    client = TestClient(app=app)
+
+    response = client.put(
+        f'{base_url}{book.id}',
+        json={'title': 'New Title'},
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+    )
+
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+    assert response.json() == {'detail': 'Database error'}
+    mock_session.rollback.assert_called_once()

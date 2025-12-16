@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr
 
@@ -15,8 +15,8 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
-    username: str | None = None
-    email: EmailStr | None = None
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
 
 
 class UserPublic(UserBase):

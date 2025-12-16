@@ -87,7 +87,6 @@ def test_update_user_deve_retornar_user_modificado(
     )
 
     data = response.json()
-
     assert data['username'] == modified_username
 
 
@@ -194,16 +193,12 @@ def test_create_user_deve_falhar_sem_campos_obrigatorios(
     client: TestClient,
     field_missing: str,
     session: Session,
-    authenticated_token: Token,
     user_payload: dict,
 ):
     del user_payload[field_missing]
 
     response = client.post(
         base_url,
-        headers={
-            'Authorization': f'Bearer {authenticated_token.access_token}'
-        },
         json=user_payload,
     )
     data = response.json()
@@ -212,13 +207,8 @@ def test_create_user_deve_falhar_sem_campos_obrigatorios(
             assert field_missing == detail['loc'][1]
 
     user = session.scalars(select(User)).one_or_none()
-    user_validated = UserCreate.model_validate(user, from_attributes=True)
-
-    # o usuario em db não deve ser o criado pelo teste
-    for key, value in user_validated.model_dump(
-        exclude={'password'}, exclude_unset=True, by_alias=True
-    ).items():
-        assert user_payload.get(key, '') != value
+    # ipdb.set_trace()
+    assert user is None
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 

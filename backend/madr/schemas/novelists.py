@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -14,7 +14,7 @@ class NovelistSchema(NovelistBase): ...
 
 
 class NovelistUpdate(BaseModel):
-    name: str | None
+    name: Optional[str] = None
 
 
 class NovelistPublic(NovelistBase):

@@ -1,9 +1,10 @@
 from http import HTTPStatus
 
-import ipdb  # noqa: F401
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from madr.api.utils import is_unique_violation
 from madr.dependecies import active_user, db_session
 from madr.models.novelist import Novelist
 from madr.schemas import Message
@@ -24,16 +25,26 @@ def create_novelist(
     novelist: NovelistSchema,
     session: db_session,
 ):
-    stmt = select(Novelist).where((Novelist.name == novelist.name))
-    existing_novelist = session.scalar(stmt)
-    if existing_novelist:
-        raise HTTPException(
-            HTTPStatus.CONFLICT, detail='Novelist already exists'
-        )
     db_novelist = Novelist(**novelist.model_dump())
-    session.add(db_novelist)
-    session.commit()
-    session.refresh(db_novelist)
+
+    try:
+        session.add(db_novelist)
+        session.commit()
+        session.refresh(db_novelist)
+    except IntegrityError as err:
+        session.rollback()
+
+        if is_unique_violation(err):
+            raise HTTPException(
+                status_code=HTTPStatus.CONFLICT,
+                detail='Novelist already exists',
+            )
+
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail='Database error',
+        )
+
     return db_novelist
 
 
@@ -46,7 +57,6 @@ def update_novelist(
     novelist: NovelistUpdate,
     session: db_session,
 ):
-    # Get the novelist
     existing_novelist = session.scalar(
         select(Novelist).where(Novelist.id == novelist_id)
     )
@@ -63,11 +73,18 @@ def update_novelist(
     try:
         session.commit()
         session.refresh(existing_novelist)
-    except Exception:
+    except IntegrityError as err:
+        session.rollback()
+        if is_unique_violation(err):
+            raise HTTPException(
+                status_code=HTTPStatus.CONFLICT,
+                detail='Novelist already exists',
+            )
+    except SQLAlchemyError:
         session.rollback()
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail='Failed to update novelist',
+            detail='Database error',
         )
 
     return existing_novelist
@@ -77,11 +94,10 @@ def update_novelist(
     '/{novelist_id}', status_code=HTTPStatus.OK, response_model=Message
 )
 def remove_novelist(
-    active_user: active_user,
+    _: active_user,
     novelist_id: int,
     session: db_session,
 ):
-    # Primeiro verifica se o novelist existe
     existing_novelist = session.scalar(
         select(Novelist).where(Novelist.id == novelist_id)
     )
@@ -91,7 +107,18 @@ def remove_novelist(
             status_code=HTTPStatus.NOT_FOUND, detail='Novelist not found'
         )
 
-    session.delete(existing_novelist)
-    session.commit()
+    try:
+        session.delete(existing_novelist)
+        session.commit()
+    except SQLAlchemyError:
+        session.rollback()
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail='Failed to delete novelist',
+        )
 
     return {'message': 'Novelist Removed'}
+
+
+# TODO
+# - obter books paginados por id_novelist

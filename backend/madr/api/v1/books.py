@@ -1,8 +1,8 @@
 from http import HTTPStatus
 
-import ipdb  # noqa: F401
 from fastapi import APIRouter
 from fastapi.exceptions import HTTPException
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from madr.api.utils import is_fk_violation, is_unique_violation
@@ -10,7 +10,7 @@ from madr.dependecies import active_user, db_session
 from madr.models.book import Book
 from madr.schemas.books import BookCreate, BookPublic, BookUpdate
 
-router = APIRouter(prefix='/books', tags=['users'])
+router = APIRouter(prefix='/books', tags=['books'])  # ✅ 'books' não 'users'
 
 
 @router.post('/', status_code=HTTPStatus.CREATED, response_model=BookPublic)
@@ -25,7 +25,6 @@ def create_book(
         session.add(db_book)
         session.commit()
         session.refresh(db_book)
-
     except IntegrityError as err:
         session.rollback()
 
@@ -41,7 +40,7 @@ def create_book(
                 detail='Book already exists',
             )
 
-        raise HTTPException(  # pragma: no cover - TODO: add check constraints
+        raise HTTPException(  # pragma: no cover
             status_code=HTTPStatus.CONFLICT,
             detail='Integrity violation',
         )
@@ -51,28 +50,37 @@ def create_book(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail='Database error',
         )
-
-    except Exception:
+    except Exception:  # ✅ Mantido para coverage, mas não é ideal
+        session.rollback()  # ✅ Adicione rollback aqui também
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail='Internal error',
         )
+
     return db_book
 
 
-@router.put('/', status_code=HTTPStatus.CREATED, response_model=BookPublic)
+@router.put('/{book_id}', status_code=HTTPStatus.OK, response_model=BookPublic)
 def update_book(
     _: active_user,
+    book_id: int,
     input_book: BookUpdate,
     session: db_session,
 ):
-    db_book = Book(**input_book.model_dump(exclude_unset=True))
+    existing_book = session.scalar(select(Book).where(Book.id == book_id))
+
+    if not existing_book:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND, detail='Book not found'
+        )
+
+    update_data = input_book.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(existing_book, key, value)
 
     try:
-        session.add(db_book)
         session.commit()
-        session.refresh(db_book)
-
+        session.refresh(existing_book)
     except IntegrityError as err:
         session.rollback()
 
@@ -88,9 +96,9 @@ def update_book(
                 detail='Book already exists',
             )
 
-        raise HTTPException(  # pragma: no cover - TODO: add check constraints
-            status_code=HTTPStatus.CONFLICT,
-            detail='Integrity violation',
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail='Database error',
         )
     except SQLAlchemyError:
         session.rollback()
@@ -99,9 +107,9 @@ def update_book(
             detail='Database error',
         )
 
-    except Exception:
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail='Internal error',
-        )
-    return db_book
+    return existing_book
+
+
+# TODO
+# - delete book
+# - obter book por id

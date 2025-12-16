@@ -1,8 +1,7 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from madr.api.utils import optional_model
 from madr.models.novelist import Novelist
 from madr.schemas.mixins import DateSchema
 
@@ -24,9 +23,12 @@ class BookPublic(BaseModel):
     model_config = {'from_attributes': True}
 
 
-@optional_model
-class BookUpdate(BookCreate):
-    pass
+class BookUpdate(BaseModel):
+    model_config = {'populate_by_name': True}
+    title: Optional[str] = None
+    name: Optional[str] = None
+    year: Optional[str] = None
+    id_novelist: Optional[int] = Field(alias='idNovelist', default=None)
 
 
 class BookDb(DateSchema, BookCreate):
