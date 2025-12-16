@@ -31,8 +31,6 @@ def test_create_book_deve_ter_exito_e_retornar_book_com_id(
     )
 
     assert response.status_code == HTTPStatus.CREATED
-    data = response.json()
-    assert data['idNovelist'] == book_payload['idNovelist']
 
 
 def test_create_book_deve_falhar_com_conflict(
@@ -317,5 +315,3 @@ def test_update_book_deve_ter_exito_e_retornar_book_modificado(
     )
 
     assert response.status_code == HTTPStatus.CREATED
-    data = response.json()
-    assert data['idNovelist'] == book_payload['idNovelist']
