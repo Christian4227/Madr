@@ -1,11 +1,10 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from http import HTTPStatus
 from unittest.mock import Mock
 
 import ipdb  # noqa: F401
 import pytest
 from fastapi.testclient import TestClient
-from freezegun import freeze_time
 from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -13,6 +12,7 @@ from sqlalchemy.orm import Session
 from madr.models.book import Book
 from madr.models.user import User
 from madr.schemas.security import Token
+from tests.utils import frozen_context
 
 base_url = '/books/'
 
@@ -109,8 +109,7 @@ def test_create_book_deve_falhar_por_token_expirado(
     client: TestClient,
     book_payload: dict,
 ):
-    initial_datetime = datetime.now(timezone.utc) + timedelta(minutes=6)
-    with freeze_time(initial_datetime) as frozen_datetime:  # noqa: F841
+    with frozen_context(timedelta(minutes=31)):
         response = client.post(
             base_url,
             headers={

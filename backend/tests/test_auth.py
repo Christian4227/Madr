@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from madr.core.security import generate_token
 from madr.models.user import User
+from tests.utils import frozen_context
 
 base_url_api = '/auth/token'
 
@@ -124,16 +125,19 @@ def test_generate_token_sem_exp_time_delta(user: User):
 
 def test_generate_token_com_exp_time_delta(user: User):
     data = {'sub': user.id, 'username': user.username, 'email': user.email}
-    custom_exp = timedelta(hours=1)
     from madr.config import Settings  # noqa: PLC0415
 
-    token = generate_token(data, custom_exp)
     settings = Settings()  # type: ignore
+    expiration_token_minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    custom_exp = timedelta(minutes=expiration_token_minutes)
 
-    decoded = jwt.decode(
-        token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
-    )
-    exp = datetime.fromtimestamp(decoded['exp'], tz=timezone.utc)
-    now = datetime.now(timezone.utc)
+    with frozen_context():
+        now = datetime.now(timezone.utc)
+        token = generate_token(data, custom_exp)
 
-    assert timedelta(minutes=59) < (exp - now) < timedelta(minutes=61)
+        decoded = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+
+        expected_exp = int((now + custom_exp).timestamp())
+        assert decoded['exp'] == expected_exp

@@ -1,11 +1,11 @@
 from http import HTTPStatus
 
 import ipdb  # noqa: F401
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
-from madr.core.database import get_session
+from madr.api.utils import is_unique_violation
 from madr.core.security import get_hash
 from madr.dependecies import active_user, db_session
 from madr.models.user import User
@@ -21,28 +21,25 @@ router = APIRouter(prefix='/users', tags=['users'])
 
 
 @router.post('/', status_code=HTTPStatus.CREATED, response_model=UserPublic)
-def create_user(user: UserCreate, session: Session = Depends(get_session)):
-    stmt = select(User)
-    stmt = stmt.where(
-        (User.username == user.username) | (User.email == user.email)
-    )
-
-    existing_user = session.scalar(stmt)
-    if existing_user:
-        raise HTTPException(HTTPStatus.CONFLICT, detail='User alredy exists')
+def create_user(user: UserCreate, session: db_session):
     db_user = User(**user.model_dump(exclude_unset=True))
     db_user.password = get_hash(db_user.password)
     try:
         session.add(db_user)
         session.commit()
         session.refresh(db_user)
-    except Exception:
+    except IntegrityError as err:
         session.rollback()
+
+        if is_unique_violation(err):
+            raise HTTPException(
+                status_code=HTTPStatus.CONFLICT,
+                detail='User already exists',
+            )
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail='Failed to create user',
+            detail='Database error',
         )
-
     return db_user
 
 
@@ -74,8 +71,10 @@ def update_user(
     response_model=UserList,
 )
 def read_users(
-    skip: int = 0, limit: int = 10, session: Session = Depends(get_session)
-):
+    session: db_session,
+    skip: int = 0,
+    limit: int = 10,
+):  # pragma: no cover
     users = session.scalars(select(User).offset(skip).limit(limit)).all()
 
     return {'users': users}
@@ -84,7 +83,7 @@ def read_users(
 @router.delete('/', status_code=HTTPStatus.OK, response_model=Message)
 def remove_user(
     active_user: active_user,
-    session: Session = Depends(get_session),
+    session: db_session,
 ):
     session.execute(delete(User).where(User.id == active_user.id))
     try:

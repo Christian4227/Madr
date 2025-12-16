@@ -1,10 +1,9 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from http import HTTPStatus
 from unittest.mock import Mock
 
 import ipdb  # noqa: F401
 from fastapi.testclient import TestClient
-from freezegun import freeze_time
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -15,6 +14,7 @@ from madr.models.novelist import Novelist
 from madr.models.user import User
 from madr.schemas.novelists import NovelistSchema
 from madr.schemas.security import Token
+from tests.utils import frozen_context
 
 url_base = '/novelists/'
 
@@ -50,7 +50,7 @@ def test_create_novelist_deve_falhar_retornar_conflito(
         },
     )
     assert response.status_code == HTTPStatus.CONFLICT
-    assert response.json() == {'detail': 'Novelist alredy exists'}
+    assert response.json() == {'detail': 'Novelist already exists'}
 
 
 def test_create_novelist_deve_falhar_com_nao_autorizacao(
@@ -214,8 +214,7 @@ def test_update_novelist_deve_falhar_com_rollback(
         app.dependency_overrides.clear()
 
 
-# initial_datetime = datetime.now(timezone.utc) + timedelta(minutes=6)
-#     with freeze_time(initial_datetime) as frozen_datetime:  # noqa: F841
+# with frozen_context(timedelta(minutes=31)):
 #         response = client.post(
 #             base_url,
 #             headers={
@@ -235,8 +234,7 @@ def test_create_novelist_deve_falhar_com_token_expirado(
 ):
     payload = {'name': 'Zaraulstra da Bahia'}
 
-    initial_datetime = datetime.now(timezone.utc) + timedelta(minutes=6)
-    with freeze_time(initial_datetime) as frozen_datetime:  # noqa: F841
+    with frozen_context(timedelta(minutes=31)):
         response = client.post(
             url_base,
             json=payload,
@@ -264,8 +262,7 @@ def test_update_novelist_deve_falhar_com_token_expirado(
     payload = {
         'name': modified_novelist_name,
     }
-    initial_datetime = datetime.now(tz=timezone.utc) + timedelta(6)
-    with freeze_time(initial_datetime) as frozen_time:  # noqa: F841
+    with frozen_context(timedelta(minutes=31)):
         response = client.put(
             f'/novelists/{novelist.id}',
             json=payload,

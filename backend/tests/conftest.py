@@ -15,6 +15,7 @@ from madr.models.novelist import Novelist
 from madr.models.user import User
 from madr.schemas.books import BookCreate
 from madr.schemas.security import Token
+from madr.schemas.user import UserCreate
 from tests.factories import BookFactory, NovelistFactory, UserFactory
 
 
@@ -126,7 +127,21 @@ def book(session: Session, novelist: Novelist) -> Book:
 
 @pytest.fixture
 def book_payload(novelist: Novelist) -> dict:
-    book = BookFactory.build(id_novelist=novelist.id)
-    book_validated = BookCreate.model_validate(book, from_attributes=True)
+    _book = BookFactory.build(id_novelist=novelist.id)
+    book_validated = BookCreate.model_validate(_book, from_attributes=True)
     payload = book_validated.model_dump(by_alias=True)
     return payload
+
+
+@pytest.fixture
+def user_payload() -> dict:
+    _user = UserFactory()
+    user_validated = UserCreate.model_validate(_user, from_attributes=True)
+
+    return user_validated.model_dump(by_alias=True)
+
+
+@pytest.fixture(autouse=True)
+def clear_overrides():
+    yield
+    app.dependency_overrides.clear()

@@ -12,8 +12,8 @@ class UserFactory(factory.Factory):
     class Meta:
         model = User
 
-    username = factory.Sequence(lambda n: f'test_name_{n}')
-    email = factory.LazyAttribute(lambda obj: f'{obj.username}@test.com')
+    username = factory.Sequence(lambda n: f'test_name_{n}')  # type: ignore
+    email = factory.LazyAttribute(lambda obj: f'{obj.username}@test.com')  # type: ignore
     password = factory.Sequence(lambda n: f'test_pwd_{n}')
 
 
