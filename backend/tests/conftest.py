@@ -79,15 +79,21 @@ def novelist(session: Session):
 
 @pytest.fixture
 def novelist_with_books(session: Session):
-    new_novelist = NovelistFactory.build()
-    session.add(new_novelist)
-    session.flush()
+    def _factory(qtd: int = 1):
+        novelist = NovelistFactory.build()
+        session.add(novelist)
+        session.flush()
 
-    books = BookFactory.build_batch(size=25, id_novelist=new_novelist.id)
-    session.add_all(books)
-    session.commit()
-    session.refresh(new_novelist)
-    return new_novelist
+        books = BookFactory.build_batch(
+            size=qtd,
+            id_novelist=novelist.id,
+        )
+        session.add_all(books)
+        session.commit()
+
+        return novelist
+
+    return _factory
 
 
 @pytest.fixture

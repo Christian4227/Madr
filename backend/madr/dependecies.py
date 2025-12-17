@@ -1,12 +1,13 @@
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.orm import Session
 
 from madr.core.database import get_session
 from madr.core.security import get_current_user
+from madr.schemas import FilterParams
 from madr.schemas.user import UserPublic
 
 
@@ -25,4 +26,5 @@ request_form_data = Annotated[OAuth2PasswordRequestForm, Depends()]
 
 db_session = Annotated[Session, Depends(get_session)]
 
+query_params = Annotated[FilterParams, Query()]
 active_user = Annotated[UserPublic, Depends(get_current_user)]

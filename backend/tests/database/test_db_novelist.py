@@ -1,6 +1,8 @@
 # from typing import List
 
 # from sqlalchemy import delete, select
+from typing import Callable
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,15 +21,21 @@ def test_create_novelist(session: Session):
     assert novelist.name == 'alice'
 
 
-def test_novelist_update(session: Session, novelist_with_books: Novelist):
-    name = novelist_with_books.name
-    novelist_with_books.name = f'modified_{name}'
-    session.add(novelist_with_books)
+def test_novelist_update(
+    session: Session, novelist_with_books: Callable[[int], Novelist]
+):
+    novelist = novelist_with_books(35)
+    name = novelist.name
+    novelist_identifier = novelist.id
+    novelist.name = f'modified_{name}'
+    session.add(novelist)
     session.commit()
 
-    novelist_modfied = session.scalar(select(Novelist).where())
-    assert novelist_modfied is not None
-    assert novelist_modfied.name == f'modified_{name}'
+    novelist_modified = session.scalar(
+        select(Novelist).where(Novelist.id == novelist_identifier)
+    )
+    assert novelist_modified is not None
+    assert novelist_modified.name == f'modified_{name}'
 
 
 # def test_delete_user(session: Session, user: User):

@@ -1,10 +1,12 @@
 from datetime import timedelta
 from http import HTTPStatus
+from typing import Callable
 from unittest.mock import Mock
+from urllib.parse import urlencode
 
 import ipdb  # noqa: F401
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -248,6 +250,122 @@ def test_update_novelist_deve_falhar_com_token_expirado(
 
 
 # ============================================================================
+# READ TESTS
+# ============================================================================
+
+
+def test_read_books_of_novelist_deve_retornar_lista_de_livros_de_um_romancista(
+    client: TestClient,
+    authenticated_token: Token,
+    novelist_with_books: Callable[[int], Novelist],
+):
+    novelist = novelist_with_books(350)
+    response = client.get(f'{url_base}{novelist.id}/books')
+    response_data = response.json()
+
+    assert response.status_code == HTTPStatus.OK
+
+    assert len(response_data['data'])
+
+
+def test_read_books_of_novelist_deve_retornar_livros_de_um_romancista_com_limit_e_offset(  # noqa: E501
+    client: TestClient,
+    authenticated_token: Token,
+    novelist_with_books: Callable[[int], Novelist],
+):
+    total_books = 43
+    limit = 8
+    page = 6
+    params = {'limit': limit, 'page': page}
+    query_string = urlencode(params)
+
+    partial_page_qty = total_books - ((page - 1) * limit)
+
+    novelist = novelist_with_books(total_books)
+
+    url = f'{url_base}{novelist.id}/books?{query_string}'
+    response = client.get(url)
+    response_data = response.json()
+
+    assert response.status_code == HTTPStatus.OK
+
+    assert len(response_data['data']) == partial_page_qty
+
+
+def test_read_books_of_novelist_deve_retornar_0_livros_por_pagina_inexistente(
+    client: TestClient,
+    authenticated_token: Token,
+    novelist_with_books: Callable[[int], Novelist],
+):
+    total_books = 25
+    limit = 10
+    page = 4
+    params = {'limit': limit, 'page': page}
+    query_string = urlencode(params)
+    novelist = novelist_with_books(total_books)
+
+    url = f'{url_base}{novelist.id}/books?{query_string}'
+    response = client.get(url)
+    response_data = response.json()
+
+    assert response.status_code == HTTPStatus.OK
+
+    assert response_data == {
+        'data': [],
+        'total': 0,
+        'page': page,
+        'has_prev': True,
+        'has_next': False,
+    }
+
+
+def test_read_books_of_novelist_deve_retornar_0_livros_por_pagina_muito_acima_da_ultima_existente(  # noqa: E501
+    client: TestClient,
+    authenticated_token: Token,
+    novelist_with_books: Callable[[int], Novelist],
+):
+    total_books = 50
+    limit = 10
+    page = 9
+    params = {'limit': limit, 'page': page}
+    query_string = urlencode(params)
+
+    novelist = novelist_with_books(total_books)
+
+    url = f'{url_base}{novelist.id}/books?{query_string}'
+    response = client.get(url)
+    response_data = response.json()
+
+    assert response.status_code == HTTPStatus.OK
+    assert response_data == {
+        'data': [],
+        'total': 0,
+        'page': page,
+        'has_prev': True,
+        'has_next': False,
+    }
+
+
+def test_read_books_of_novelist_deve_retornar_zero_livros_de_um_romancista(
+    client: TestClient,
+    authenticated_token: Token,
+    novelist_with_books: Callable[[int], Novelist],
+):
+    total_books = 0
+    params = {'limit': 10, 'page': 6}
+    query_string = urlencode(params)
+    novelist = novelist_with_books(total_books)
+
+    url = f'{url_base}{novelist.id}/books?{query_string}'
+    response = client.get(url)
+
+    response_data = response.json()
+    assert response.status_code == HTTPStatus.OK
+
+    assert len(response_data['data']) == 0
+
+
+# ============================================================================
 # DELETE TESTS
 # ============================================================================
 
@@ -255,10 +373,11 @@ def test_update_novelist_deve_falhar_com_token_expirado(
 def test_delete_novelist_deve_retornar_success_delecao(
     client: TestClient,
     authenticated_token: Token,
-    novelist_with_books: Novelist,
+    novelist_with_books: Callable[[int], Novelist],
 ):
+    novelist = novelist_with_books(25)
     response = client.delete(
-        f'{url_base}{novelist_with_books.id}',
+        f'{url_base}{novelist.id}',
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
         },
@@ -272,9 +391,10 @@ def test_delete_novelist_e_livros_deve_retornar_success(
     client: TestClient,
     authenticated_token: Token,
     session: Session,
-    novelist_with_books: Novelist,
+    novelist_with_books: Callable[[int], Novelist],
 ):
-    novelist_id = novelist_with_books.id
+    novelist = novelist_with_books(15)
+    novelist_id = novelist.id
 
     response = client.delete(
         f'{url_base}{novelist_id}',
@@ -293,26 +413,34 @@ def test_delete_novelist_e_livros_deve_retornar_success(
 
 
 def test_delete_novelist_deve_retornar_not_found(
+    session: Session,
     client: TestClient,
     authenticated_token: Token,
-    novelist_with_books: Novelist,
+    novelist_with_books: Callable[[int], Novelist],
 ):
+    novelist = novelist_with_books(15)
+    stmt = select(func.max(Novelist.id))
+    max_id = session.scalar(stmt)
     response = client.delete(
-        f'{url_base}{novelist_with_books.id + 15674}',
+        f'{url_base}{max_id + 1}',
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
-
+    db_novelist = session.scalar(
+        select(Novelist).where(Novelist.id == novelist.id)
+    )
+    assert db_novelist
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert response.json() == {'detail': 'Novelist not found'}
 
 
 def test_delete_novelist_deve_retornar_unauthorized(
     client: TestClient,
-    novelist_with_books: Novelist,
+    novelist_with_books: Callable[[int], Novelist],
 ):
-    response = client.delete(f'{url_base}{novelist_with_books.id}')
+    novelist = novelist_with_books(15)
+    response = client.delete(f'{url_base}{novelist.id}')
     assert response.status_code == HTTPStatus.UNAUTHORIZED
     assert response.json() == {'detail': 'Not authenticated'}
 

@@ -1,13 +1,15 @@
 from http import HTTPStatus
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from madr.api.utils import is_unique_violation
-from madr.dependecies import active_user, db_session
+from madr.dependecies import active_user, db_session, query_params
+from madr.models.book import Book
 from madr.models.novelist import Novelist
-from madr.schemas import Message
+from madr.schemas import Message, OutputPaginated
+from madr.schemas.books import BookPublic
 from madr.schemas.novelists import (
     NovelistPublic,
     NovelistSchema,
@@ -120,5 +122,30 @@ def remove_novelist(
     return {'message': 'Novelist Removed'}
 
 
-# TODO
-# - obter books paginados por id_novelist
+@router.get(
+    '/{novelist_id}/books',
+    status_code=HTTPStatus.OK,
+    response_model=OutputPaginated[BookPublic],
+)
+def get_books_by_novelist(
+    novelist_id: int, query_params: query_params, session: db_session
+):
+    offset = (query_params.page - 1) * query_params.limit
+    stmt = (
+        select(Book.id, Book.title, func.count().over().label('total'))
+        .where(Book.id_novelist == novelist_id)
+        .offset(offset)
+        .limit(query_params.limit)
+    )
+
+    books = session.execute(stmt).mappings().all()
+    total_books = books[0]['total'] if books else 0
+    data_books = [BookPublic(**b) for b in books]
+    output_paginated = OutputPaginated[BookPublic](
+        page=query_params.page,
+        data=data_books,
+        total=total_books,
+        has_prev=query_params.page > 1,
+        has_next=(offset + query_params.limit) < total_books,
+    )
+    return output_paginated

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -35,7 +35,3 @@ class BookDb(DateSchema, BookCreate):
     id: int
     novelist: Novelist
     model_config = {'from_attributes': True}
-
-
-class BookList(BaseModel):
-    items: List[BookPublic]
