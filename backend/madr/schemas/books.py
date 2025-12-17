@@ -17,9 +17,8 @@ class BookCreate(BaseBook):
     id_novelist: int = Field(alias='idNovelist')
 
 
-class BookPublic(BaseModel):
+class BookPublic(BaseBook):
     id: int
-    title: str
     model_config = {'from_attributes': True}
 
 

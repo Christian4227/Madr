@@ -5,6 +5,7 @@ from unittest.mock import Mock
 from urllib.parse import urlencode
 
 import ipdb  # noqa: F401
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -256,7 +257,6 @@ def test_update_novelist_deve_falhar_com_token_expirado(
 
 def test_read_books_of_novelist_deve_retornar_lista_de_livros_de_um_romancista(
     client: TestClient,
-    authenticated_token: Token,
     novelist_with_books: Callable[[int], Novelist],
 ):
     novelist = novelist_with_books(350)
@@ -270,7 +270,6 @@ def test_read_books_of_novelist_deve_retornar_lista_de_livros_de_um_romancista(
 
 def test_read_books_of_novelist_deve_retornar_livros_de_um_romancista_com_limit_e_offset(  # noqa: E501
     client: TestClient,
-    authenticated_token: Token,
     novelist_with_books: Callable[[int], Novelist],
 ):
     total_books = 43
@@ -294,7 +293,6 @@ def test_read_books_of_novelist_deve_retornar_livros_de_um_romancista_com_limit_
 
 def test_read_books_of_novelist_deve_retornar_0_livros_por_pagina_inexistente(
     client: TestClient,
-    authenticated_token: Token,
     novelist_with_books: Callable[[int], Novelist],
 ):
     total_books = 25
@@ -321,7 +319,6 @@ def test_read_books_of_novelist_deve_retornar_0_livros_por_pagina_inexistente(
 
 def test_read_books_of_novelist_deve_retornar_0_livros_por_pagina_muito_acima_da_ultima_existente(  # noqa: E501
     client: TestClient,
-    authenticated_token: Token,
     novelist_with_books: Callable[[int], Novelist],
 ):
     total_books = 50
@@ -348,7 +345,6 @@ def test_read_books_of_novelist_deve_retornar_0_livros_por_pagina_muito_acima_da
 
 def test_read_books_of_novelist_deve_retornar_zero_livros_de_um_romancista(
     client: TestClient,
-    authenticated_token: Token,
     novelist_with_books: Callable[[int], Novelist],
 ):
     total_books = 0
@@ -363,6 +359,81 @@ def test_read_books_of_novelist_deve_retornar_zero_livros_de_um_romancista(
     assert response.status_code == HTTPStatus.OK
 
     assert len(response_data['data']) == 0
+
+
+# @pytest.mark.parametrize(
+#     'order_dir',
+#     [
+#         'asc',
+#     ],
+# )
+# @pytest.mark.parametrize(
+#     'order_by',
+#     [
+#         'name',
+#     ],
+# )
+# def test_read_books_of_novelist_deve_retornar_livros_ordenados(
+#     client: TestClient,
+#     novelist_with_books: Callable[[int], Novelist],
+#     order_by: str,
+#     order_dir: str,
+# ):
+#     total_books = 50
+#     params = {
+#         'limit': 8,
+#         'page': 5,
+#         'order_by': order_by,
+#         'order_dir': order_dir,
+#     }
+#     query_string = urlencode(params)
+#     novelist = novelist_with_books(total_books)
+
+#     url = f'{url_base}{novelist.id}/books?{query_string}'
+#     response = client.get(url)
+
+#     response_data = response.json()
+#     ipdb.set_trace()
+#     assert response.status_code == HTTPStatus.OK
+
+#     sorted_data = sorted(
+#         response_data['data'],
+#         key=lambda book: book[order_by],
+#         reverse=(order_dir == 'desc'),
+#     )
+#     assert response_data['data'] == sorted_data
+
+
+@pytest.mark.parametrize('order_dir', ['asc', 'desc'])
+@pytest.mark.parametrize('order_by', ['title', 'name', 'year'])
+def test_read_books_of_novelist_deve_retornar_livros_ordenados(
+    client: TestClient,
+    novelist_with_books: Callable[[int], Novelist],
+    order_by: str,
+    order_dir: str,
+):
+    total_books = 50
+    params = {
+        'limit': 8,
+        'page': 5,
+        'order_by': order_by,
+        'order_dir': order_dir,
+    }
+    query_string = urlencode(params)
+    novelist = novelist_with_books(total_books)
+
+    url = f'{url_base}{novelist.id}/books?{query_string}'
+    response = client.get(url)
+
+    response_data = response.json()
+    assert response.status_code == HTTPStatus.OK
+
+    sorted_data = sorted(
+        response_data['data'],
+        key=lambda book: book[order_by],
+        reverse=(order_dir == 'desc'),
+    )
+    assert response_data['data'] == sorted_data
 
 
 # ============================================================================

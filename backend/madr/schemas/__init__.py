@@ -12,7 +12,13 @@ class Message(BaseModel):
 class FilterParams(BaseModel):
     page: int = Field(1, ge=1)
     limit: int = Field(10, ge=1, le=100)
-    order_by: Literal['name', 'created_at', 'updated_at'] = 'created_at'
+    order_dir: Literal['desc', 'asc'] = 'desc'
+
+
+class BookFilterParams(FilterParams):
+    order_by: Literal['title', 'year', 'name', 'created_at', 'updated_at'] = (
+        'created_at'
+    )
 
 
 class OutputPaginated(BaseModel, Generic[T]):
