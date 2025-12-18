@@ -492,8 +492,10 @@ def test_delete_novelist_deve_retornar_not_found(
     novelist = novelist_with_books(15)
     stmt = select(func.max(Novelist.id))
     max_id = session.scalar(stmt)
+    last_id_novelist = 0 if max_id is None else max_id
+
     response = client.delete(
-        f'{url_base}{max_id + 1}',
+        f'{url_base}{last_id_novelist + 1}',
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
         },
@@ -541,7 +543,9 @@ def test_delete_novelist_deve_falhar_com_rollback(
     )
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
-    assert response.json() == {'detail': 'Failed to delete novelist'}
+    assert response.json() == {
+        'detail': 'Cannot delete novelist with existing references'
+    }
     mock_session.rollback.assert_called_once()
 
     # Verifica que não foi deletado

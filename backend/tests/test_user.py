@@ -276,7 +276,9 @@ def test_delete_user_deve_falhar_com_rollback(
     )
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
-    assert response.json() == {'detail': 'Failed to delete user'}
+    assert response.json() == {
+        'detail': 'Cannot delete account with existing references'
+    }
     mock_session.rollback.assert_called_once()
     user_db = session.execute(select(User)).one_or_none()
     assert user_db

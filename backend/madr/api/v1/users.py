@@ -92,7 +92,7 @@ def remove_user(
         session.rollback()
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail='Failed to delete user',
+            detail='Cannot delete account with existing references',
         )
 
     return {'message': 'Account Removed'}

@@ -2,6 +2,7 @@ from datetime import timedelta
 from http import HTTPStatus
 from unittest.mock import Mock
 
+import ipdb  # noqa: F401
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
@@ -443,3 +444,22 @@ def test_update_book_deve_falhar_integrity_error_generico(
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert response.json() == {'detail': 'Database error'}
     mock_session.rollback.assert_called_once()
+
+
+# ============================================================================
+# DELETE TESTS
+# ============================================================================
+def test_delete_book_deve_ter_sucesso_e_retornar_mensagem(
+    client: TestClient,
+    authenticated_token: Token,
+    session: Session,
+    book: Book,
+):
+    response = client.delete(
+        f'{base_url}{book.id}',
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+    )
+    assert response.status_code == HTTPStatus.OK
+    assert response.json() == {'message': 'Book Removed'}

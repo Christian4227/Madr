@@ -117,7 +117,7 @@ def remove_novelist(
         session.rollback()
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail='Failed to delete novelist',
+            detail='Cannot delete novelist with existing references',
         )
 
     return {'message': 'Novelist Removed'}

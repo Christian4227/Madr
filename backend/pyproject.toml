@@ -24,6 +24,7 @@ dev-dependencies = [
     "ipdb",
     "factory-boy>=3.3.3",
     "freezegun>=1.5.5",
+    "testcontainers[postgres]>=4.13.3",
 ]
 
 [build-system]
