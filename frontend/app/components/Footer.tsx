@@ -1,4 +1,3 @@
-import React from "react";
 import Image from "next/image";
 import styles from "./Components.module.css";
 import madr_logo_site from "@images/madr-logo-site.svg";

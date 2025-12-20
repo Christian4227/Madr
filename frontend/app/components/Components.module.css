@@ -113,3 +113,20 @@
   max-height: 100%;
   object-fit: cover;
 }
+
+/* Modais */
+.div_modal {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  width: 100vw;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  backdrop-filter: brightness(80%);
+  z-index: 10;
+  overflow-y: scroll;
+}

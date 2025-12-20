@@ -10,21 +10,25 @@ Toda a execução é baseada no **uv** — ambiente gerenciado, rápido e reprod
 ## 🚀 Como rodar o projeto
 
 ### 1. Instale o uv
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ### 2. Crie o ambiente
+
 ```bash
 uv venv
 ```
 
 ### 3. Ative o ambiente
+
 ```bash
-source .venv/bin/activate
+.\.venv\Scripts\Activate.ps1
 ```
 
 ### 4. Instale as dependências
+
 ```bash
 uv sync
 ```
@@ -40,11 +44,13 @@ DATABASE_URL=postgresql+psycopg://user:senha@localhost:5432/romancistas
 ```
 
 ### 6. Execute as migrações (se houver)
+
 ```bash
 uv run alembic upgrade head
 ```
 
 ### 7. Rode a API
+
 ```bash
 uv run task run
 ```
@@ -67,7 +73,7 @@ uv run task test
 Com relatório de cobertura:
 
 ```bash
-uv run task test --cov=madr  
+uv run task test --cov=madr
 ```
 
 ---
@@ -157,21 +163,25 @@ Toda a execução é baseada no **uv** — ambiente gerenciado, rápido e reprod
 ## 🚀 Como rodar o projeto
 
 ### 1. Instale o uv
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ### 2. Crie o ambiente
+
 ```bash
 uv venv
 ```
 
 ### 3. Ative o ambiente
+
 ```bash
 source ./backend/.venv/bin/activate
 ```
 
 ### 4. Instale as dependências
+
 ```bash
 uv pip install -r requirements.txt
 ```
@@ -188,11 +198,13 @@ CORS_ORIGINS=["http://localhost:3000", "http://127.0.0.1:3000"]
 ```
 
 ### 6. Execute as migrações (se houver)
+
 ```bash
 uv run alembic upgrade head
 ```
 
 ### 7. Rode a API
+
 ```bash
 uv run fastapi dev madr/main.py
 ```
@@ -293,4 +305,3 @@ Cada rota segue arquitetura REST.
 ## 📄 Licença
 
 Projeto interno — uso restrito às equipes da empresa.
-

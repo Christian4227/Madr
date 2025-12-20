@@ -1,20 +1,18 @@
 @import url("https://fonts.cdnfonts.com/css/Calistoga");
 @import url("https://fonts.cdnfonts.com/css/Inter");
 @import url("https://fonts.cdnfonts.com/css/Roboto");
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tw-animate-css";
+@import "tailwindcss";
 
 :root {
   --cor-principal: #b51d1d;
+  --cor-fundo: #fdfdfd;
+  --cor-fundo-input: #fff;
   --fonte-madr: "Calistoga";
   --fonte-texto: Roboto;
 }
 
 * {
-  margin: 0;
-  padding: 0;
   box-sizing: border-box;
 }
 
@@ -38,9 +36,18 @@ h1,
 h2,
 h3,
 p,
-span {
+span,
+label {
   color: var(--cor-principal);
   font-family: var(--fonte-texto);
+}
+
+label {
+  font-family: Inter;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: normal;
 }
 
 img {
@@ -48,11 +55,47 @@ img {
   height: auto;
 }
 
-input[type="search"] {
-  letter-spacing: 1px;
+input[type="submit"],
+input[type="button"] {
+  text-transform: uppercase;
+  padding: 8px 24px;
+  gap: 10px;
+  font-family: Inter;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+  border-radius: 5px;
 }
 
-input[type="search"]::placeholder {
+.button-form-submit {
+  align-self: stretch;
+}
+
+input[type="submit"].button-primary,
+input[type="button"].button-primary {
+  color: #fff;
+  background: var(--cor-principal);
+  border: 0;
+}
+
+input:not([type="button"], [type="submit"]) {
+  display: flex;
+  padding: 4px 8px;
+  align-items: flex-start;
+  gap: 10px;
+  border-radius: 5px;
+  border: 1px solid var(--cor-principal);
+  background: var(--cor-fundo-input);
+  letter-spacing: 1px;
+  flex-grow: 1;
+  align-self: stretch;
+  outline: none;
+}
+
+input[type="search"]::placeholder,
+input[type="text"]::placeholder,
+input[type="password"]::placeholder {
   color: #9c9c9c;
 }
 
@@ -67,6 +110,15 @@ input[type="search"]::placeholder {
 .p-white,
 .span-white {
   color: #fff;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+}
+
+.p-primary,
+.span-primary {
+  color: var(--cor-principal);
   font-size: 16px;
   font-style: normal;
   font-weight: 400;
