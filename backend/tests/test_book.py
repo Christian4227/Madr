@@ -512,9 +512,17 @@ def test_delete_book_by_id_deve_falhar_com_rollback(
 
 
 # ============================================================================
-# GET TESTS
+# READ TESTS
 # ============================================================================
-def test_get_book_by_id_deve_ter_sucesso_e_retornar_book(
+def test_read_books_by_partial_name_title_deve_ter_sucesso_e_retornar_books(
+    client: TestClient,
+    session: Session,
+    book: Book,
+):
+    ...
+
+
+def test_read_book_by_id_deve_ter_sucesso_e_retornar_book(
     client: TestClient,
     session: Session,
     book: Book,
@@ -525,7 +533,7 @@ def test_get_book_by_id_deve_ter_sucesso_e_retornar_book(
     assert response.json() == _book_schema.model_dump()
 
 
-def test_get_book_by_id_deve_falhar_e_retornar_exception(
+def test_read_book_by_id_deve_falhar_e_retornar_exception(
     client: TestClient,
     session: Session,
     book: Book,

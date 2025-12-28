@@ -9,13 +9,13 @@ class Message(BaseModel):
     message: str
 
 
-class FilterParams(BaseModel):
+class PaginateOrderParams(BaseModel):
     page: int = Field(1, ge=1)
     limit: int = Field(10, ge=1, le=100)
     order_dir: Literal['desc', 'asc'] = 'desc'
 
 
-class BookFilterParams(FilterParams):
+class BookQueryParams(PaginateOrderParams):
     order_by: Literal['title', 'year', 'name', 'created_at', 'updated_at'] = (
         'created_at'
     )

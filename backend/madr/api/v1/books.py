@@ -13,6 +13,9 @@ from madr.schemas.books import BookCreate, BookPublic, BookUpdate
 
 router = APIRouter(prefix='/books', tags=['books'])  # ✅ 'books' não 'users'
 
+# TODO:
+# * busca por parte do nome ou titulo, e ano
+
 
 @router.post('/', status_code=HTTPStatus.CREATED, response_model=BookPublic)
 def create_book(

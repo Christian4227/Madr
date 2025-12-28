@@ -254,7 +254,6 @@ def test_update_novelist_deve_falhar_com_token_expirado(
 # READ TESTS
 # ============================================================================
 
-
 def test_read_books_of_novelist_deve_retornar_lista_de_livros_de_um_romancista(
     client: TestClient,
     novelist_with_books: Callable[[int], Novelist],
