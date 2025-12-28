@@ -111,6 +111,21 @@ def update_book(
     return existing_book
 
 
+@router.get('/{book_id}', status_code=HTTPStatus.OK, response_model=BookPublic)
+def get_book(
+    book_id: int,
+    session: db_session,
+):
+    existing_book = session.scalar(select(Book).where(Book.id == book_id))
+
+    if not existing_book:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND, detail='Book not found'
+        )
+
+    return existing_book
+
+
 @router.delete('/{book_id}', status_code=HTTPStatus.OK, response_model=Message)
 def delete_book(
     _: active_user,
@@ -125,12 +140,6 @@ def delete_book(
                 status_code=HTTPStatus.NOT_FOUND, detail='Book not found'
             )
 
-    except IntegrityError:
-        session.rollback()
-        raise HTTPException(
-            status_code=HTTPStatus.CONFLICT,
-            detail='Cannot delete book with existing references',
-        )
     except SQLAlchemyError:
         session.rollback()
         raise HTTPException(
@@ -139,8 +148,3 @@ def delete_book(
         )
 
     return {'message': 'Book Removed'}
-
-
-# TODO
-# - delete book
-# - obter book por id

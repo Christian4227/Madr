@@ -1,6 +1,6 @@
 from datetime import timedelta
 from http import HTTPStatus
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import ipdb  # noqa: F401
 import pytest
@@ -14,6 +14,7 @@ from madr.core.database import get_session
 from madr.models.book import Book
 from madr.models.novelist import Novelist
 from madr.models.user import User
+from madr.schemas.books import BookPublic
 from madr.schemas.security import Token
 from tests.utils import frozen_context
 
@@ -463,3 +464,73 @@ def test_delete_book_deve_ter_sucesso_e_retornar_mensagem(
     )
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {'message': 'Book Removed'}
+
+
+def test_delete_book_by_id_deve_falhar_e_retornar_exception(
+    client: TestClient,
+    authenticated_token: Token,
+    session: Session,
+    book: Book,
+):
+    response = client.delete(
+        f'{base_url}{book.id + 999}',
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+    assert response.json() == {'detail': 'Book not found'}
+
+
+def test_delete_book_by_id_deve_falhar_com_rollback(
+    client: TestClient,
+    authenticated_token: Token,
+    session: Session,
+    book: Book,
+):
+    original_book_id = book.id
+
+    with patch.object(
+        session, 'commit', side_effect=SQLAlchemyError('DB Error')
+    ):
+        response = client.delete(
+            f'{base_url}{original_book_id}',
+            headers={
+                'Authorization': f'Bearer {authenticated_token.access_token}'
+            },
+        )
+
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+
+    assert response.json() == {'detail': 'Database error'}
+
+    session.expire_all()
+    db_book = session.scalar(select(Book).where(Book.id == original_book_id))
+    assert db_book is not None
+    assert db_book.id == original_book_id
+
+
+# ============================================================================
+# GET TESTS
+# ============================================================================
+def test_get_book_by_id_deve_ter_sucesso_e_retornar_book(
+    client: TestClient,
+    session: Session,
+    book: Book,
+):
+    response = client.get(f'{base_url}{book.id}')
+    assert response.status_code == HTTPStatus.OK
+    _book_schema = BookPublic.model_validate(book)
+    assert response.json() == _book_schema.model_dump()
+
+
+def test_get_book_by_id_deve_falhar_e_retornar_exception(
+    client: TestClient,
+    session: Session,
+    book: Book,
+):
+    response = client.get(f'{base_url}{book.id + 999}')
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+    assert response.json() == {'detail': 'Book not found'}

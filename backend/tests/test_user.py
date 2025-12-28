@@ -1,7 +1,7 @@
 import secrets
 from datetime import timedelta
 from http import HTTPStatus
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import ipdb  # noqa: F401
 import pytest
@@ -16,7 +16,7 @@ from madr.app import app
 from madr.core.database import get_session
 from madr.models.user import User
 from madr.schemas.security import Token
-from madr.schemas.user import UserCreate, UserUpdate
+from madr.schemas.user import UserCreate
 from tests.utils import frozen_context
 
 base_url = '/users/'
@@ -213,44 +213,34 @@ def test_create_user_deve_falhar_sem_campos_obrigatorios(
     assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-def test_update_user_deve_falhar_com_rollback(
+def test_update_user_rollback_on_commit_error(
     user_payload: dict,
     session: Session,
     authenticated_token: Token,
     user: User,
+    client: TestClient,
 ):
-
     del user_payload['password']
 
-    original_validated = UserUpdate.model_validate(user, from_attributes=True)
-    original_user = original_validated.model_dump(exclude_unset=True)
+    original_data = {'username': user.username, 'email': user.email}
 
-    mock_session = Mock()
-    mock_session.scalar.return_value = user
-    mock_session.commit.side_effect = SQLAlchemyError('Database error')
-    mock_session.rollback = Mock()
-
-    # sessão que falha e lança exceção
-    def mock_get_session():
-        yield mock_session
-
-    app.dependency_overrides[get_session] = mock_get_session
-    client = TestClient(app=app)
-
-    response = client.put(
-        base_url,
-        json=user_payload,
-        headers={
-            'Authorization': f'Bearer {authenticated_token.access_token}'
-        },
-    )
+    with patch.object(
+        session, 'commit', side_effect=SQLAlchemyError('DB error')
+    ):
+        response = client.put(
+            base_url,
+            json=user_payload,
+            headers={
+                'Authorization': f'Bearer {authenticated_token.access_token}'
+            },
+        )
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert response.json() == {'detail': 'Failed to update user'}
-    mock_session.rollback.assert_called_once()
-    session.refresh(user)
-    for key, value in user_payload.items():
-        assert original_user[key] != value
+
+    session.expire_all()
+    assert user.username == original_data['username']
+    assert user.email == original_data['email']
 
 
 def test_delete_user_deve_falhar_com_rollback(
