@@ -1,6 +1,6 @@
 from datetime import timedelta
 from http import HTTPStatus
-from typing import Callable
+from typing import Callable, Optional
 from unittest.mock import Mock
 from urllib.parse import urlencode
 
@@ -254,6 +254,7 @@ def test_update_novelist_deve_falhar_com_token_expirado(
 # READ TESTS
 # ============================================================================
 
+
 def test_read_books_of_novelist_deve_retornar_lista_de_livros_de_um_romancista(
     client: TestClient,
     novelist_with_books: Callable[[int], Novelist],
@@ -311,8 +312,8 @@ def test_read_books_of_novelist_deve_retornar_0_livros_por_pagina_inexistente(
         'data': [],
         'total': 0,
         'page': page,
-        'has_prev': True,
-        'has_next': False,
+        'hasPrev': True,
+        'hasNext': False,
     }
 
 
@@ -337,8 +338,8 @@ def test_read_books_of_novelist_deve_retornar_0_livros_por_pagina_muito_acima_da
         'data': [],
         'total': 0,
         'page': page,
-        'has_prev': True,
-        'has_next': False,
+        'hasPrev': True,
+        'hasNext': False,
     }
 
 
@@ -360,54 +361,13 @@ def test_read_books_of_novelist_deve_retornar_zero_livros_de_um_romancista(
     assert len(response_data['data']) == 0
 
 
-# @pytest.mark.parametrize(
-#     'order_dir',
-#     [
-#         'asc',
-#     ],
-# )
-# @pytest.mark.parametrize(
-#     'order_by',
-#     [
-#         'name',
-#     ],
-# )
-# def test_read_books_of_novelist_deve_retornar_livros_ordenados(
-#     client: TestClient,
-#     novelist_with_books: Callable[[int], Novelist],
-#     order_by: str,
-#     order_dir: str,
-# ):
-#     total_books = 50
-#     params = {
-#         'limit': 8,
-#         'page': 5,
-#         'order_by': order_by,
-#         'order_dir': order_dir,
-#     }
-#     query_string = urlencode(params)
-#     novelist = novelist_with_books(total_books)
-
-#     url = f'{url_base}{novelist.id}/books?{query_string}'
-#     response = client.get(url)
-
-#     response_data = response.json()
-#     ipdb.set_trace()
-#     assert response.status_code == HTTPStatus.OK
-
-#     sorted_data = sorted(
-#         response_data['data'],
-#         key=lambda book: book[order_by],
-#         reverse=(order_dir == 'desc'),
-#     )
-#     assert response_data['data'] == sorted_data
-
-
 @pytest.mark.parametrize('order_dir', ['asc', 'desc'])
 @pytest.mark.parametrize('order_by', ['title', 'name', 'year'])
 def test_read_books_of_novelist_deve_retornar_livros_ordenados(
     client: TestClient,
-    novelist_with_books: Callable[[int], Novelist],
+    novelist_with_books: Callable[
+        [int, Optional[str], Optional[str]], Novelist
+    ],
     order_by: str,
     order_dir: str,
 ):
@@ -415,15 +375,15 @@ def test_read_books_of_novelist_deve_retornar_livros_ordenados(
     params = {
         'limit': 8,
         'page': 5,
-        'order_by': order_by,
-        'order_dir': order_dir,
+        'orderBy': order_by,
+        'orderDir': order_dir,
     }
     query_string = urlencode(params)
     novelist = novelist_with_books(total_books)
 
     url = f'{url_base}{novelist.id}/books?{query_string}'
     response = client.get(url)
-
+    # ipdb.set_trace()
     response_data = response.json()
     assert response.status_code == HTTPStatus.OK
 

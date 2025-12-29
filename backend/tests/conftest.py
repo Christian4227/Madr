@@ -1,6 +1,7 @@
 from datetime import timedelta
-from typing import List
+from typing import List, Optional
 
+import factory
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -79,7 +80,11 @@ def novelist(session: Session):
 
 @pytest.fixture
 def novelist_with_books(session: Session):
-    def _factory(qtd: int = 1):
+    def _factory(
+        qtd: int = 1,
+        name_prefix: Optional[str] = 'book_name',
+        title_prefix: Optional[str] = 'book_title',
+    ):
         novelist = NovelistFactory.build()
         session.add(novelist)
         session.flush()
@@ -87,6 +92,8 @@ def novelist_with_books(session: Session):
         books = BookFactory.build_batch(
             size=qtd,
             id_novelist=novelist.id,
+            name=factory.Sequence(lambda n: f'{name_prefix}_{n}'),  # type: ignore
+            title=factory.Sequence(lambda n: f'{title_prefix}_{n}'),  # type: ignore
         )
         session.add_all(books)
         session.commit()

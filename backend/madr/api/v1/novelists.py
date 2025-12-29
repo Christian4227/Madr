@@ -1,17 +1,20 @@
 from http import HTTPStatus
-from typing import Annotated
 
 import ipdb  # noqa: F401
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from madr.api.utils import is_unique_violation
-from madr.dependecies import active_user, db_session
+from madr.dependecies import AnnotatedBookQueryParams, active_user, db_session
 from madr.models.book import Book
 from madr.models.novelist import Novelist
-from madr.schemas import BookQueryParams, Message, OutputPaginated
-from madr.schemas.books import BookPublic
+from madr.schemas import Message
+from madr.schemas.books import (
+    ORDERABLE_FIELDS,
+    BookPublic,
+    PublicBooksPaginated,
+)
 from madr.schemas.novelists import (
     NovelistPublic,
     NovelistSchema,
@@ -126,26 +129,17 @@ def remove_novelist(
     return {'message': 'Novelist Removed'}
 
 
-book_query_params = Annotated[BookQueryParams, Query()]
-
-
 @router.get(
     '/{novelist_id}/books',
     status_code=HTTPStatus.OK,
-    response_model=OutputPaginated[BookPublic],
+    response_model=PublicBooksPaginated,
 )
 def get_books_by_novelist(
-    novelist_id: int, query: book_query_params, session: db_session
+    novelist_id: int, query: AnnotatedBookQueryParams, session: db_session
 ):
-    offset = (query.page - 1) * query.limit
+    offset = query.offset
 
-    order_field = {
-        'title': Book.title,
-        'name': Book.name,
-        'year': Book.year,
-        'created_at': Book.created_at,
-        'updated_at': Book.updated_at,
-    }[query.order_by]
+    order_field = ORDERABLE_FIELDS[query.order_by]
 
     stmt = (
         select(
@@ -166,11 +160,11 @@ def get_books_by_novelist(
     )
 
     books = session.execute(stmt).mappings().all()
-    # ipdb.set_trace()
+
     total_books = books[0]['total'] if books else 0
     data_books = [BookPublic(**b) for b in books]
 
-    return OutputPaginated[BookPublic](
+    return PublicBooksPaginated(
         page=query.page,
         data=data_books,
         total=total_books,
