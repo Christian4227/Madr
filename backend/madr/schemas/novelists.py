@@ -2,6 +2,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
+from madr.schemas import OutputPaginated
 from madr.schemas.books import BookPublic
 from madr.schemas.mixins import DateSchema
 
@@ -29,3 +30,6 @@ class NovelistDB(NovelistBase, DateSchema):
 
 class NovelistList(BaseModel):
     items: List[NovelistPublic]
+
+
+PublicNovelistsPaginated = OutputPaginated[NovelistPublic]

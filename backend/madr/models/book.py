@@ -22,8 +22,8 @@ class Book(DateMixin):
     __tablename__ = 'books'
 
     id: Mapped[int] = mapped_column(init=False, primary_key=True)
-    name: Mapped[str] = mapped_column(unique=True)
-    year: Mapped[str] = mapped_column()
+    name: Mapped[str] = mapped_column(unique=True, nullable=False)
+    year: Mapped[int] = mapped_column(index=True, nullable=False)
     title: Mapped[str] = mapped_column()
 
     id_novelist: Mapped[int] = mapped_column(ForeignKey('novelists.id'))

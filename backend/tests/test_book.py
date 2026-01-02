@@ -1,6 +1,8 @@
 from datetime import timedelta
 from http import HTTPStatus
-from unittest.mock import Mock
+from typing import Callable, Optional
+from unittest.mock import Mock, patch
+from urllib.parse import urlencode
 
 import ipdb  # noqa: F401
 import pytest
@@ -14,7 +16,9 @@ from madr.core.database import get_session
 from madr.models.book import Book
 from madr.models.novelist import Novelist
 from madr.models.user import User
+from madr.schemas.books import BookPublic
 from madr.schemas.security import Token
+from tests.factories import BookFactory
 from tests.utils import frozen_context
 
 base_url = '/books/'
@@ -369,7 +373,7 @@ def test_update_book_deve_falhar_unique_violation(
 
     other_book = Book(
         name='other_book',
-        year='2020',
+        year=2020,
         title='Other',
         id_novelist=book.id_novelist,
     )
@@ -463,3 +467,255 @@ def test_delete_book_deve_ter_sucesso_e_retornar_mensagem(
     )
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {'message': 'Book Removed'}
+
+
+def test_delete_book_by_id_deve_falhar_e_retornar_exception(
+    client: TestClient,
+    authenticated_token: Token,
+    session: Session,
+    book: Book,
+):
+    response = client.delete(
+        f'{base_url}{book.id + 999}',
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+    assert response.json() == {'detail': 'Book not found'}
+
+
+def test_delete_book_by_id_deve_falhar_com_rollback(
+    client: TestClient,
+    authenticated_token: Token,
+    session: Session,
+    book: Book,
+):
+    original_book_id = book.id
+
+    with patch.object(
+        session, 'commit', side_effect=SQLAlchemyError('DB Error')
+    ):
+        response = client.delete(
+            f'{base_url}{original_book_id}',
+            headers={
+                'Authorization': f'Bearer {authenticated_token.access_token}'
+            },
+        )
+
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+
+    assert response.json() == {'detail': 'Database error'}
+
+    session.expire_all()
+    db_book = session.scalar(select(Book).where(Book.id == original_book_id))
+    assert db_book is not None
+    assert db_book.id == original_book_id
+
+
+# ============================================================================
+# READ TESTS
+# ============================================================================
+def test_read_books_by_partial_name_deve_retornar_livros_filtrados(
+    client: TestClient,
+    session: Session,
+    novelist_with_books,
+):
+
+    [
+        novelist_with_books(10, name_prefix=lang)
+        for lang in ('Python', 'Java', 'Rust')
+    ]
+
+    uri = f'{base_url}?' + urlencode({'name': 'Python'})
+    response = client.get(uri)
+
+    assert response.status_code == HTTPStatus.OK
+    data = response.json()
+
+    assert data['total'] == 10  # noqa: PLR2004
+    assert len(data['data']) == 10  # noqa: PLR2004
+    assert all('Python' in book['name'] for book in data['data'])
+
+
+def test_read_books_by_partial_title_deve_retornar_livros_filtrados(
+    client: TestClient,
+    session: Session,
+    novelist_with_books,
+):
+    novelist_with_books(5, title_prefix='Advanced')
+    novelist_with_books(5, title_prefix='Beginner')
+
+    uri = f'{base_url}?' + urlencode({'title': 'Advanced'})
+    response = client.get(uri)
+
+    assert response.status_code == HTTPStatus.OK
+    data = response.json()
+
+    db_books = session.scalars(select(Book)).all()
+
+    assert db_books
+    assert data['total'] == 5  # noqa: PLR2004
+    assert all('Advanced' in book['title'] for book in data['data'])
+
+
+def test_read_books_by_year_range_deve_retornar_livros_filtrados(
+    client: TestClient,
+    session: Session,
+    novelist: Novelist,
+):
+    # Cria livros com anos específicos
+    books = [
+        BookFactory.build(year=2019, id_novelist=novelist.id),
+        BookFactory.build(year=2020, id_novelist=novelist.id),
+        BookFactory.build(year=2021, id_novelist=novelist.id),
+        BookFactory.build(year=2022, id_novelist=novelist.id),
+        BookFactory.build(year=2023, id_novelist=novelist.id),
+    ]
+    session.add_all(books)
+    session.commit()
+
+    # Filtro: yearFrom=2020, yearTo=2022 (exclusive)
+    uri = f'{base_url}?' + urlencode({'yearFrom': 2020, 'yearTo': 2022})
+    response = client.get(uri)
+
+    assert response.status_code == HTTPStatus.OK
+    data = response.json()
+
+    assert data['total'] == 2  # 2020 e 2021  # noqa: PLR2004
+    years = [book['year'] for book in data['data']]
+    assert 2020 in years  # noqa: PLR2004
+    assert 2021 in years  # noqa: PLR2004
+    assert 2022 not in years  # noqa: PLR2004
+
+
+def test_read_books_com_multiplos_filtros_deve_retornar_correto(
+    client: TestClient,
+    session: Session,
+    novelist: Novelist,
+):
+    books = [
+        BookFactory.build(
+            name='Python Basics', year=2020, id_novelist=novelist.id
+        ),
+        BookFactory.build(
+            name='Python Advanced', year=2021, id_novelist=novelist.id
+        ),
+        BookFactory.build(
+            name='Java Basics', year=2020, id_novelist=novelist.id
+        ),
+        BookFactory.build(
+            name='Python Expert', year=2022, id_novelist=novelist.id
+        ),
+    ]
+    session.add_all(books)
+    session.commit()
+
+    # Filtro: name='Python' AND yearFrom=2021
+    uri = f'{base_url}?' + urlencode({'name': 'Python', 'yearFrom': 2021})
+    response = client.get(uri)
+
+    assert response.status_code == HTTPStatus.OK
+    data = response.json()
+
+    assert data['total'] == 2  # noqa: PLR2004  # Python Advanced (2021) e Python Expert (2022)
+    assert all('Python' in book['name'] for book in data['data'])
+    assert all(book['year'] >= 2021 for book in data['data'])  # noqa: PLR2004
+
+
+def test_read_books_sem_filtros_deve_retornar_todos(
+    client: TestClient,
+    session: Session,
+    novelist_with_books,
+):
+    novelist_with_books(15)
+
+    response = client.get(base_url)
+
+    assert response.status_code == HTTPStatus.OK
+    data = response.json()
+
+    assert data['total'] == 15  # noqa: PLR2004
+    assert len(data['data']) == 10  # limite padrão   # noqa: PLR2004
+    assert data['page'] == 1
+    assert data['hasNext'] is True
+
+
+def test_read_books_filtro_sem_resultado_deve_retornar_lista_vazia(
+    client: TestClient,
+    session: Session,
+    novelist_with_books,
+):
+    novelist_with_books(5, name_prefix='Python')
+
+    uri = f'{base_url}?' + urlencode({'name': 'NonExistent'})
+    response = client.get(uri)
+
+    assert response.status_code == HTTPStatus.OK
+    data = response.json()
+
+    assert data['total'] == 0
+    assert data['data'] == []
+    assert data['hasPrev'] is False
+    assert data['hasNext'] is False
+
+
+def test_read_books_paginacao_deve_funcionar_corretamente(
+    client: TestClient,
+    session: Session,
+    novelist_with_books: Callable[
+        [int, Optional[str], Optional[str]], Novelist
+    ],
+):
+    novelist_with_books(25, name_prefix='Book', title_prefix='Title')
+
+    # Página 1
+    uri1 = f'{base_url}?' + urlencode({'page': 1, 'limit': 10})
+    response1 = client.get(uri1)
+    data1 = response1.json()
+
+    assert data1['total'] == 25  # noqa: PLR2004
+    assert len(data1['data']) == 10  # noqa: PLR2004
+    assert data1['hasPrev'] is False
+    assert data1['hasNext'] is True
+
+    # Página 2
+    uri2 = f'{base_url}?' + urlencode({'page': 2, 'limit': 10})
+    response2 = client.get(uri2)
+    data2 = response2.json()
+
+    assert len(data2['data']) == 10  # noqa: PLR2004
+    assert data2['hasPrev'] is True
+    assert data2['hasNext'] is True
+
+    # Página 3 (última)
+    uri3 = f'{base_url}?' + urlencode({'page': 3, 'limit': 10})
+    response3 = client.get(uri3)
+    data3 = response3.json()
+
+    assert len(data3['data']) == 5  # noqa: PLR2004
+    assert data3['hasPrev'] is True
+    assert data3['hasNext'] is False
+
+
+def test_read_book_by_id_deve_ter_sucesso_e_retornar_book(
+    client: TestClient,
+    session: Session,
+    book: Book,
+):
+    response = client.get(f'{base_url}{book.id}')
+    assert response.status_code == HTTPStatus.OK
+    _book_schema = BookPublic.model_validate(book)
+    assert response.json() == _book_schema.model_dump()
+
+
+def test_read_book_by_id_deve_falhar_e_retornar_exception(
+    client: TestClient,
+    session: Session,
+    book: Book,
+):
+    response = client.get(f'{base_url}{book.id + 999}')
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+    assert response.json() == {'detail': 'Book not found'}

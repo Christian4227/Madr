@@ -1,16 +1,20 @@
 from http import HTTPStatus
-from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+import ipdb  # noqa: F401
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from madr.api.utils import is_unique_violation
-from madr.dependecies import active_user, db_session
+from madr.dependecies import AnnotatedBookQueryParams, active_user, db_session
 from madr.models.book import Book
 from madr.models.novelist import Novelist
-from madr.schemas import BookFilterParams, Message, OutputPaginated
-from madr.schemas.books import BookPublic
+from madr.schemas import Message
+from madr.schemas.books import (
+    ORDERABLE_FIELDS,
+    BookPublic,
+    PublicBooksPaginated,
+)
 from madr.schemas.novelists import (
     NovelistPublic,
     NovelistSchema,
@@ -18,6 +22,8 @@ from madr.schemas.novelists import (
 )
 
 router = APIRouter(prefix='/novelists', tags=['novelists'])
+# TODO:
+# * por parte do nome
 
 
 @router.post(
@@ -123,26 +129,17 @@ def remove_novelist(
     return {'message': 'Novelist Removed'}
 
 
-book_filter_params = Annotated[BookFilterParams, Query()]
-
-
 @router.get(
     '/{novelist_id}/books',
     status_code=HTTPStatus.OK,
-    response_model=OutputPaginated[BookPublic],
+    response_model=PublicBooksPaginated,
 )
 def get_books_by_novelist(
-    novelist_id: int, filters: book_filter_params, session: db_session
+    novelist_id: int, query: AnnotatedBookQueryParams, session: db_session
 ):
-    offset = (filters.page - 1) * filters.limit
+    offset = query.offset
 
-    order_field = {
-        'title': Book.title,
-        'name': Book.name,
-        'year': Book.year,
-        'created_at': Book.created_at,
-        'updated_at': Book.updated_at,
-    }[filters.order_by]
+    order_field = ORDERABLE_FIELDS[query.order_by]
 
     stmt = (
         select(
@@ -155,21 +152,22 @@ def get_books_by_novelist(
         .where(Book.id_novelist == novelist_id)
         .order_by(
             order_field.desc()
-            if filters.order_dir == 'desc'
+            if query.order_dir == 'desc'
             else order_field.asc()
         )
         .offset(offset)
-        .limit(filters.limit)
+        .limit(query.limit)
     )
 
     books = session.execute(stmt).mappings().all()
+
     total_books = books[0]['total'] if books else 0
     data_books = [BookPublic(**b) for b in books]
 
-    return OutputPaginated[BookPublic](
-        page=filters.page,
+    return PublicBooksPaginated(
+        page=query.page,
         data=data_books,
         total=total_books,
-        has_prev=filters.page > 1,
-        has_next=(offset + filters.limit) < total_books,
+        has_prev=query.page > 1,
+        has_next=(offset + query.limit) < total_books,
     )
