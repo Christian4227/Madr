@@ -36,7 +36,7 @@
 .pesquisar {
   position: relative;
   padding: 8px 16px;
-  border: 0;
+  border: 0 !important;
   align-self: stretch;
   flex-grow: 1;
   outline: none;
