@@ -1,8 +1,9 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
-from madr.schemas import OutputPaginated
+from madr.models.novelist import Novelist
+from madr.schemas import OutputPaginated, PaginateOrderParams
 from madr.schemas.books import BookPublic
 from madr.schemas.mixins import DateSchema
 
@@ -32,4 +33,10 @@ class NovelistList(BaseModel):
     items: List[NovelistPublic]
 
 
+class NovelistQueryParams(PaginateOrderParams):
+    name: Optional[str] = None
+    order_by: Literal['id', 'name'] = 'id'
+
+
 PublicNovelistsPaginated = OutputPaginated[NovelistPublic]
+ORDERABLE_FIELDS = {'id': Novelist.id, 'name': Novelist.name}

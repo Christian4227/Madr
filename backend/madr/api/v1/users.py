@@ -1,6 +1,5 @@
 from http import HTTPStatus
 
-import ipdb  # noqa: F401
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -21,15 +20,15 @@ router = APIRouter(prefix='/users', tags=['users'])
 
 
 @router.post('/', status_code=HTTPStatus.CREATED, response_model=UserPublic)
-def create_user(user: UserCreate, session: db_session):
+async def create_user(user: UserCreate, session: db_session):
     db_user = User(**user.model_dump(exclude_unset=True))
     db_user.password = get_hash(db_user.password)
     try:
         session.add(db_user)
-        session.commit()
-        session.refresh(db_user)
+        await session.commit()
+        await session.refresh(db_user)
     except IntegrityError as err:
-        session.rollback()
+        await session.rollback()
 
         if is_unique_violation(err):
             raise HTTPException(
@@ -44,7 +43,7 @@ def create_user(user: UserCreate, session: db_session):
 
 
 @router.put('/', status_code=HTTPStatus.OK, response_model=UserPublic)
-def update_user(
+async def update_user(
     active_user: active_user, user: UserUpdate, session: db_session
 ):
 
@@ -54,10 +53,10 @@ def update_user(
     for key, value in update_data.items():
         setattr(active_user, key, value)
     try:
-        session.commit()
-        session.refresh(active_user)
+        await session.commit()
+        await session.refresh(active_user)
     except Exception:
-        session.rollback()
+        await session.rollback()
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail='Failed to update user',
@@ -70,26 +69,28 @@ def update_user(
     status_code=HTTPStatus.OK,
     response_model=UserList,
 )
-def read_users(
+async def read_users(
     session: db_session,
     skip: int = 0,
     limit: int = 10,
 ):  # pragma: no cover
-    users = session.scalars(select(User).offset(skip).limit(limit)).all()
+
+    result = await session.scalars(select(User).offset(skip).limit(limit))
+    users = result.all()
 
     return {'users': users}
 
 
 @router.delete('/', status_code=HTTPStatus.OK, response_model=Message)
-def remove_user(
+async def remove_user(
     active_user: active_user,
     session: db_session,
 ):
-    session.execute(delete(User).where(User.id == active_user.id))
+    await session.execute(delete(User).where(User.id == active_user.id))
     try:
-        session.commit()
+        await session.commit()
     except Exception:
-        session.rollback()
+        await session.rollback()
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail='Cannot delete account with existing references',

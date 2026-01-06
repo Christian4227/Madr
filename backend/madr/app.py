@@ -1,9 +1,15 @@
+import asyncio
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from madr.api.v1.router import routers
 from madr.config import Settings
 from madr.schemas import Message
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 app = FastAPI()
 settings = Settings()  # type: ignore

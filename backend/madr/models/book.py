@@ -26,7 +26,9 @@ class Book(DateMixin):
     year: Mapped[int] = mapped_column(index=True, nullable=False)
     title: Mapped[str] = mapped_column()
 
-    id_novelist: Mapped[int] = mapped_column(ForeignKey('novelists.id'))
+    id_novelist: Mapped[int] = mapped_column(
+        ForeignKey('novelists.id', ondelete='CASCADE')
+    )
 
     novelist: Mapped[Novelist] = relationship(
         init=False, back_populates='books'

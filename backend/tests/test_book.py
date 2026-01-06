@@ -1,15 +1,14 @@
 from datetime import timedelta
 from http import HTTPStatus
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional
 from unittest.mock import Mock, patch
 from urllib.parse import urlencode
 
-import ipdb  # noqa: F401
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from madr.app import app
 from madr.core.database import get_session
@@ -29,7 +28,8 @@ base_url = '/books/'
 # ============================================================================
 
 
-def test_create_book_deve_ter_exito_e_retornar_book_com_id(
+@pytest.mark.asyncio
+async def test_create_book_deve_ter_exito_e_retornar_book_com_id(
     client: TestClient,
     authenticated_token: Token,
     book_payload: dict,
@@ -44,17 +44,50 @@ def test_create_book_deve_ter_exito_e_retornar_book_com_id(
     assert response.status_code == HTTPStatus.CREATED
 
 
-def test_create_book_deve_falhar_com_conflict(
-    session: Session,
+# @pytest.mark.asyncio
+# async def test_create_book_deve_falhar_com_conflict(
+#     session: AsyncSession,
+#     client: TestClient,
+#     authenticated_token: Token,
+#     book: Book,
+# ):
+#     response = client.post(
+#         base_url,
+#         json={
+#             'idNovelist': book.id_novelist,
+#             'name': book.name,
+#             'year': '2017',
+#             'title': 'Modified Title',
+#         },
+#         headers={
+#             'Authorization': f'Bearer {authenticated_token.access_token}'
+#         },
+#     )
+
+#     assert response.status_code == HTTPStatus.CONFLICT
+#     assert response.json()['detail'] == 'Book already exists'
+
+#     db_books = await session.scalars(
+#         select(Book).where(Book.name == book.name)
+#     ).all()
+#     assert len(db_books) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_book_deve_falhar_com_conflict(
+    session: AsyncSession,
     client: TestClient,
     authenticated_token: Token,
     book: Book,
 ):
+    book_name = book.name
+    book_id_novelist = book.id_novelist
+
     response = client.post(
         base_url,
         json={
-            'idNovelist': book.id_novelist,
-            'name': book.name,
+            'idNovelist': book_id_novelist,
+            'name': book_name,
             'year': '2017',
             'title': 'Modified Title',
         },
@@ -66,14 +99,15 @@ def test_create_book_deve_falhar_com_conflict(
     assert response.status_code == HTTPStatus.CONFLICT
     assert response.json()['detail'] == 'Book already exists'
 
-    db_books = session.scalars(
-        select(Book).where(Book.name == book.name)
-    ).all()
+    stmt = select(Book).where(Book.name == book_name)
+    result = (await session.scalars(stmt)).all()
+    db_books = result
     assert len(db_books) == 1
 
 
-def test_create_book_deve_falhar_por_nao_existir_romancista(
-    session: Session,
+@pytest.mark.asyncio
+async def test_create_book_deve_falhar_por_nao_existir_romancista(
+    session: AsyncSession,
     authenticated_token: Token,
     client: TestClient,
     book_payload: dict,
@@ -90,13 +124,14 @@ def test_create_book_deve_falhar_por_nao_existir_romancista(
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert response.json() == {'detail': 'Novelist not found'}
 
-    db_book = session.scalar(
+    db_book = await session.scalar(
         select(Book).where(Book.name == book_payload['name'])
     )
     assert db_book is None
 
 
-def test_create_book_deve_falhar_sem_authorization(
+@pytest.mark.asyncio
+async def test_create_book_deve_falhar_sem_authorization(
     client: TestClient,
     book_payload: dict,
 ):
@@ -105,7 +140,8 @@ def test_create_book_deve_falhar_sem_authorization(
     assert response.json()['detail'] == 'Not authenticated'
 
 
-def test_create_book_deve_falhar_sem_token_valido(
+@pytest.mark.asyncio
+async def test_create_book_deve_falhar_sem_token_valido(
     client: TestClient,
     book_payload: dict,
 ):
@@ -118,8 +154,9 @@ def test_create_book_deve_falhar_sem_token_valido(
     assert response.json()['detail'] == 'Could not validate credentials'
 
 
-def test_create_book_deve_falhar_por_token_expirado(
-    session: Session,
+@pytest.mark.asyncio
+async def test_create_book_deve_falhar_por_token_expirado(
+    session: AsyncSession,
     authenticated_token: Token,
     client: TestClient,
     book_payload: dict,
@@ -136,20 +173,21 @@ def test_create_book_deve_falhar_por_token_expirado(
         assert response.status_code == HTTPStatus.UNAUTHORIZED
         assert response.json() == {'detail': 'Expired token'}
 
-        db_book = session.scalar(
+        db_book = await session.scalar(
             select(Book).where(Book.name == book_payload['name'])
         )
         assert db_book is None
 
 
-def test_create_book_deve_falhar_user_removido(
+@pytest.mark.asyncio
+async def test_create_book_deve_falhar_user_removido(
     authenticated_token: Token,
     book_payload: dict,
     client: TestClient,
-    session: Session,
+    session: AsyncSession,
 ):
-    session.execute(delete(User))
-    session.commit()
+    await session.execute(delete(User))
+    await session.commit()
 
     response = client.post(
         base_url,
@@ -167,7 +205,8 @@ def test_create_book_deve_falhar_user_removido(
     'field_missing',
     ['name', 'year', 'title', 'idNovelist'],
 )
-def test_create_book_deve_falhar_sem_campos_obrigatorios(
+@pytest.mark.asyncio
+async def test_create_book_deve_falhar_sem_campos_obrigatorios(
     field_missing: str,
     client: TestClient,
     authenticated_token: Token,
@@ -194,7 +233,8 @@ def test_create_book_deve_falhar_sem_campos_obrigatorios(
     'field',
     ['name', 'year', 'title', 'idNovelist'],
 )
-def test_create_book_deve_falhar_com_null_em_campos_obrigatorios(
+@pytest.mark.asyncio
+async def test_create_book_deve_falhar_com_null_em_campos_obrigatorios(
     field: str,
     client: TestClient,
     authenticated_token: Token,
@@ -214,13 +254,14 @@ def test_create_book_deve_falhar_com_null_em_campos_obrigatorios(
     assert any(err['loc'][1] == field for err in errors)
 
 
-def test_create_book_deve_falhar_com_erro_de_banco_e_rollback(
-    session: Session,
+@pytest.mark.asyncio
+async def test_create_book_deve_falhar_com_erro_de_banco_e_rollback(
+    session: AsyncSession,
     authenticated_token: Token,
     book_payload: dict,
     user: User,
 ):
-    mock_session = Mock(spec=Session)
+    mock_session = Mock(spec=AsyncSession)
     mock_session.scalar.return_value = user
     mock_session.commit.side_effect = SQLAlchemyError('Database error')
 
@@ -242,18 +283,19 @@ def test_create_book_deve_falhar_com_erro_de_banco_e_rollback(
     assert response.json() == {'detail': 'Database error'}
     mock_session.rollback.assert_called_once()
 
-    db_book = session.scalar(
+    db_book = await session.scalar(
         select(Book).where(Book.name == book_payload['name'])
     )
     assert db_book is None
 
 
-def test_create_book_deve_falhar_integrity_error_generico(
+@pytest.mark.asyncio
+async def test_create_book_deve_falhar_integrity_error_generico(
     authenticated_token: Token,
     book_payload: dict,
     user: User,
 ):
-    mock_session = Mock(spec=Session)
+    mock_session = Mock(spec=AsyncSession)
     mock_session.scalar.return_value = user
     mock_session.commit.side_effect = IntegrityError(
         'statement', 'params', Exception('check constraint failed')
@@ -278,10 +320,11 @@ def test_create_book_deve_falhar_integrity_error_generico(
     mock_session.rollback.assert_called_once()
 
 
-def test_create_book_falha_exception_generica(
+@pytest.mark.asyncio
+async def test_create_book_falha_exception_generica(
     authenticated_token: Token, book_payload: dict, user: User
 ):
-    mock_session = Mock(spec=Session)
+    mock_session = Mock(spec=AsyncSession)
     mock_session.scalar.return_value = user
     mock_session.commit.side_effect = Exception('Unexpected error')
 
@@ -308,7 +351,8 @@ def test_create_book_falha_exception_generica(
 # ============================================================================
 
 
-def test_update_book_deve_ter_exito_e_retornar_book_modificado(
+@pytest.mark.asyncio
+async def test_update_book_deve_ter_exito_e_retornar_book_modificado(
     client: TestClient,
     authenticated_token: Token,
     book: Book,
@@ -326,7 +370,8 @@ def test_update_book_deve_ter_exito_e_retornar_book_modificado(
     assert response.json()['title'] == 'Modified Title'
 
 
-def test_update_book_deve_falhar_book_not_found(
+@pytest.mark.asyncio
+async def test_update_book_deve_falhar_book_not_found(
     client: TestClient,
     authenticated_token: Token,
 ):
@@ -343,9 +388,9 @@ def test_update_book_deve_falhar_book_not_found(
     assert response.json() == {'detail': 'Book not found'}
 
 
-def test_update_book_deve_falhar_por_nao_existir_romancista(
+@pytest.mark.asyncio
+async def test_update_book_deve_falhar_por_nao_existir_romancista(
     novelist: Novelist,
-    session: Session,
     authenticated_token: Token,
     client: TestClient,
     book: Book,
@@ -363,11 +408,12 @@ def test_update_book_deve_falhar_por_nao_existir_romancista(
     assert response.json() == {'detail': 'Novelist not found'}
 
 
-def test_update_book_deve_falhar_unique_violation(
+@pytest.mark.asyncio
+async def test_update_book_deve_falhar_unique_violation(
     book: Book,
     client: TestClient,
     authenticated_token: Token,
-    session: Session,
+    session: AsyncSession,
 ):
     book_name_existent = book.name
 
@@ -378,7 +424,7 @@ def test_update_book_deve_falhar_unique_violation(
         id_novelist=book.id_novelist,
     )
     session.add(other_book)
-    session.commit()
+    await session.commit()
 
     response = client.put(
         f'{base_url}{other_book.id}',
@@ -392,12 +438,13 @@ def test_update_book_deve_falhar_unique_violation(
     assert response.json() == {'detail': 'Book already exists'}
 
 
-def test_update_book_deve_falhar_com_erro_de_banco_e_rollback(
+@pytest.mark.asyncio
+async def test_update_book_deve_falhar_com_erro_de_banco_e_rollback(
     authenticated_token: Token,
     user: User,
     book: Book,
 ):
-    mock_session = Mock(spec=Session)
+    mock_session = Mock(spec=AsyncSession)
     mock_session.scalar.side_effect = [user, book]
     mock_session.commit.side_effect = SQLAlchemyError('DB Error')
 
@@ -420,12 +467,13 @@ def test_update_book_deve_falhar_com_erro_de_banco_e_rollback(
     mock_session.rollback.assert_called_once()
 
 
-def test_update_book_deve_falhar_integrity_error_generico(
+@pytest.mark.asyncio
+async def test_update_book_deve_falhar_integrity_error_generico(
     authenticated_token: Token,
     user: User,
     book: Book,
 ):
-    mock_session = Mock(spec=Session)
+    mock_session = Mock(spec=AsyncSession)
     mock_session.scalar.side_effect = [user, book]
     mock_session.commit.side_effect = IntegrityError(
         'statement', 'params', Exception('check constraint failed')
@@ -453,10 +501,11 @@ def test_update_book_deve_falhar_integrity_error_generico(
 # ============================================================================
 # DELETE TESTS
 # ============================================================================
-def test_delete_book_deve_ter_sucesso_e_retornar_mensagem(
+@pytest.mark.asyncio
+async def test_delete_book_deve_ter_sucesso_e_retornar_mensagem(
     client: TestClient,
     authenticated_token: Token,
-    session: Session,
+    session: AsyncSession,
     book: Book,
 ):
     response = client.delete(
@@ -469,10 +518,10 @@ def test_delete_book_deve_ter_sucesso_e_retornar_mensagem(
     assert response.json() == {'message': 'Book Removed'}
 
 
-def test_delete_book_by_id_deve_falhar_e_retornar_exception(
+@pytest.mark.asyncio
+async def test_delete_book_by_id_deve_falhar_e_retornar_exception(
     client: TestClient,
     authenticated_token: Token,
-    session: Session,
     book: Book,
 ):
     response = client.delete(
@@ -486,10 +535,11 @@ def test_delete_book_by_id_deve_falhar_e_retornar_exception(
     assert response.json() == {'detail': 'Book not found'}
 
 
-def test_delete_book_by_id_deve_falhar_com_rollback(
+@pytest.mark.asyncio
+async def test_delete_book_by_id_deve_falhar_com_rollback(
     client: TestClient,
     authenticated_token: Token,
-    session: Session,
+    session: AsyncSession,
     book: Book,
 ):
     original_book_id = book.id
@@ -509,7 +559,8 @@ def test_delete_book_by_id_deve_falhar_com_rollback(
     assert response.json() == {'detail': 'Database error'}
 
     session.expire_all()
-    db_book = session.scalar(select(Book).where(Book.id == original_book_id))
+    stmt = select(Book).where(Book.id == original_book_id)
+    db_book = await session.scalar(stmt)
     assert db_book is not None
     assert db_book.id == original_book_id
 
@@ -517,14 +568,16 @@ def test_delete_book_by_id_deve_falhar_com_rollback(
 # ============================================================================
 # READ TESTS
 # ============================================================================
-def test_read_books_by_partial_name_deve_retornar_livros_filtrados(
+@pytest.mark.asyncio
+async def test_read_books_by_partial_name_deve_retornar_livros_filtrados(
     client: TestClient,
-    session: Session,
-    novelist_with_books,
+    novelist_with_books: Callable[
+        [int, Optional[str], Optional[str]], Awaitable[Novelist]
+    ],
 ):
 
     [
-        novelist_with_books(10, name_prefix=lang)
+        await novelist_with_books(10, name_prefix=lang)
         for lang in ('Python', 'Java', 'Rust')
     ]
 
@@ -539,13 +592,16 @@ def test_read_books_by_partial_name_deve_retornar_livros_filtrados(
     assert all('Python' in book['name'] for book in data['data'])
 
 
-def test_read_books_by_partial_title_deve_retornar_livros_filtrados(
+@pytest.mark.asyncio
+async def test_read_books_by_partial_title_deve_retornar_livros_filtrados(
     client: TestClient,
-    session: Session,
-    novelist_with_books,
+    session: AsyncSession,
+    novelist_with_books: Callable[
+        [int, Optional[str], Optional[str]], Awaitable[Novelist]
+    ],
 ):
-    novelist_with_books(5, title_prefix='Advanced')
-    novelist_with_books(5, title_prefix='Beginner')
+    await novelist_with_books(5, title_prefix='Advanced')  # type: ignore
+    await novelist_with_books(5, title_prefix='Beginner')  # type: ignore
 
     uri = f'{base_url}?' + urlencode({'title': 'Advanced'})
     response = client.get(uri)
@@ -553,16 +609,17 @@ def test_read_books_by_partial_title_deve_retornar_livros_filtrados(
     assert response.status_code == HTTPStatus.OK
     data = response.json()
 
-    db_books = session.scalars(select(Book)).all()
+    db_books = (await session.scalars(select(Book))).all()
 
     assert db_books
     assert data['total'] == 5  # noqa: PLR2004
     assert all('Advanced' in book['title'] for book in data['data'])
 
 
-def test_read_books_by_year_range_deve_retornar_livros_filtrados(
+@pytest.mark.asyncio
+async def test_read_books_by_year_range_deve_retornar_livros_filtrados(
     client: TestClient,
-    session: Session,
+    session: AsyncSession,
     novelist: Novelist,
 ):
     # Cria livros com anos específicos
@@ -574,7 +631,7 @@ def test_read_books_by_year_range_deve_retornar_livros_filtrados(
         BookFactory.build(year=2023, id_novelist=novelist.id),
     ]
     session.add_all(books)
-    session.commit()
+    await session.commit()
 
     # Filtro: yearFrom=2020, yearTo=2022 (exclusive)
     uri = f'{base_url}?' + urlencode({'yearFrom': 2020, 'yearTo': 2022})
@@ -590,9 +647,10 @@ def test_read_books_by_year_range_deve_retornar_livros_filtrados(
     assert 2022 not in years  # noqa: PLR2004
 
 
-def test_read_books_com_multiplos_filtros_deve_retornar_correto(
+@pytest.mark.asyncio
+async def test_read_books_com_multiplos_filtros_deve_retornar_correto(
     client: TestClient,
-    session: Session,
+    session: AsyncSession,
     novelist: Novelist,
 ):
     books = [
@@ -610,7 +668,7 @@ def test_read_books_com_multiplos_filtros_deve_retornar_correto(
         ),
     ]
     session.add_all(books)
-    session.commit()
+    await session.commit()
 
     # Filtro: name='Python' AND yearFrom=2021
     uri = f'{base_url}?' + urlencode({'name': 'Python', 'yearFrom': 2021})
@@ -624,12 +682,14 @@ def test_read_books_com_multiplos_filtros_deve_retornar_correto(
     assert all(book['year'] >= 2021 for book in data['data'])  # noqa: PLR2004
 
 
-def test_read_books_sem_filtros_deve_retornar_todos(
+@pytest.mark.asyncio
+async def test_read_books_sem_filtros_deve_retornar_todos(
     client: TestClient,
-    session: Session,
-    novelist_with_books,
+    novelist_with_books: Callable[
+        [int, Optional[str], Optional[str]], Awaitable[Novelist]
+    ],
 ):
-    novelist_with_books(15)
+    await novelist_with_books(15)
 
     response = client.get(base_url)
 
@@ -642,12 +702,15 @@ def test_read_books_sem_filtros_deve_retornar_todos(
     assert data['hasNext'] is True
 
 
-def test_read_books_filtro_sem_resultado_deve_retornar_lista_vazia(
+@pytest.mark.asyncio
+async def test_read_books_filtro_sem_resultado_deve_retornar_lista_vazia(
     client: TestClient,
-    session: Session,
-    novelist_with_books,
+    session: AsyncSession,
+    novelist_with_books: Callable[
+        [int, Optional[str], Optional[str]], Awaitable[Novelist]
+    ],
 ):
-    novelist_with_books(5, name_prefix='Python')
+    await novelist_with_books(5, name_prefix='Python')
 
     uri = f'{base_url}?' + urlencode({'name': 'NonExistent'})
     response = client.get(uri)
@@ -661,14 +724,15 @@ def test_read_books_filtro_sem_resultado_deve_retornar_lista_vazia(
     assert data['hasNext'] is False
 
 
-def test_read_books_paginacao_deve_funcionar_corretamente(
+@pytest.mark.asyncio
+async def test_read_books_paginacao_deve_funcionar_corretamente(
     client: TestClient,
-    session: Session,
+    session: AsyncSession,
     novelist_with_books: Callable[
-        [int, Optional[str], Optional[str]], Novelist
+        [int, Optional[str], Optional[str]], Awaitable[Novelist]
     ],
 ):
-    novelist_with_books(25, name_prefix='Book', title_prefix='Title')
+    await novelist_with_books(25, 'Book', 'book_title')
 
     # Página 1
     uri1 = f'{base_url}?' + urlencode({'page': 1, 'limit': 10})
@@ -699,9 +763,10 @@ def test_read_books_paginacao_deve_funcionar_corretamente(
     assert data3['hasNext'] is False
 
 
-def test_read_book_by_id_deve_ter_sucesso_e_retornar_book(
+@pytest.mark.asyncio
+async def test_read_book_by_id_deve_ter_sucesso_e_retornar_book(
     client: TestClient,
-    session: Session,
+    session: AsyncSession,
     book: Book,
 ):
     response = client.get(f'{base_url}{book.id}')
@@ -710,9 +775,9 @@ def test_read_book_by_id_deve_ter_sucesso_e_retornar_book(
     assert response.json() == _book_schema.model_dump()
 
 
-def test_read_book_by_id_deve_falhar_e_retornar_exception(
+@pytest.mark.asyncio
+async def test_read_book_by_id_deve_falhar_e_retornar_exception(
     client: TestClient,
-    session: Session,
     book: Book,
 ):
     response = client.get(f'{base_url}{book.id + 999}')

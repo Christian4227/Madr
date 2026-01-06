@@ -1,12 +1,12 @@
 from datetime import timedelta
-from typing import List, Optional
+from typing import List
 
 import factory
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from testcontainers.postgres import PostgresContainer
 
 from madr.app import app
 from madr.core.security import generate_token, get_hash
@@ -20,8 +20,15 @@ from madr.schemas.user import UserCreate
 from tests.factories import BookFactory, NovelistFactory, UserFactory
 
 
-@pytest.fixture
-def client(session: Session):
+@pytest.fixture(scope='session')
+def engine():
+    with PostgresContainer('postgres:17', driver='psycopg') as postgres:
+        _engine = create_async_engine(postgres.get_connection_url())
+        yield _engine
+
+
+@pytest_asyncio.fixture
+async def client(session: AsyncSession):
     from madr.core.database import get_session  # noqa: PLC0415
 
     def override_get_db():
@@ -29,82 +36,70 @@ def client(session: Session):
 
     app.dependency_overrides[get_session] = override_get_db
     yield TestClient(app=app)
-    app.dependency_overrides.clear()  # type: ignore
+    app.dependency_overrides.clear()
 
 
-@pytest.fixture
-def session():
-    engine = create_engine(
-        'sqlite:///:memory:',
-        connect_args={'check_same_thread': False},
-        poolclass=StaticPool,
-    )
+@pytest_asyncio.fixture
+async def session(engine):
+    async with engine.begin() as conn:
+        await conn.run_sync(table_registry.metadata.create_all)
 
-    from sqlalchemy import event  # noqa: PLC0415
-
-    @event.listens_for(engine, 'connect')
-    def enabel_sqlite_fk(dbapi_connection, connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute('PRAGMA foreign_keys=ON')
-        cursor.close()
-
-    table_registry.metadata.create_all(engine)
-
-    with Session(engine) as session:
+    async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
 
-    table_registry.metadata.drop_all(engine)
-    engine.dispose()
+    async with engine.begin() as conn:
+        await conn.run_sync(table_registry.metadata.drop_all)
 
 
-@pytest.fixture
-def user(session: Session):
+@pytest_asyncio.fixture
+async def user(session: AsyncSession):
     pwd_raw = '123456789'
     new_user = UserFactory()
     new_user.password = get_hash(pwd_raw)
 
     session.add(new_user)
-    session.commit()
-    session.refresh(new_user)
+    await session.commit()
+    await session.refresh(new_user)
     return new_user
 
 
-@pytest.fixture
-def novelist(session: Session):
+@pytest_asyncio.fixture
+async def novelist(session: AsyncSession):
     new_novelist = NovelistFactory.build()
     session.add(new_novelist)
-    session.commit()
-    session.refresh(new_novelist)
+    await session.commit()
+    await session.refresh(new_novelist)
     return new_novelist
 
 
-@pytest.fixture
-def novelist_with_books(session: Session):
-    def _factory(
-        qtd: int = 1,
-        name_prefix: Optional[str] = 'book_name',
-        title_prefix: Optional[str] = 'book_title',
+@pytest_asyncio.fixture
+async def novelist_with_books(session: AsyncSession):
+    async def _factory(
+        qty: int = 1,
+        name_prefix: str = 'book_name',
+        title_prefix: str = 'book_title',
     ):
         novelist = NovelistFactory.build()
         session.add(novelist)
-        session.flush()
+        await session.flush()
+        await session.refresh(novelist)
 
         books = BookFactory.build_batch(
-            size=qtd,
+            size=qty,
             id_novelist=novelist.id,
             name=factory.Sequence(lambda n: f'{name_prefix}_{n}'),  # type: ignore
             title=factory.Sequence(lambda n: f'{title_prefix}_{n}'),  # type: ignore
         )
         session.add_all(books)
-        session.commit()
+        await session.commit()
 
         return novelist
 
     return _factory
 
 
-@pytest.fixture
-def authenticated_token(user: User):
+@pytest_asyncio.fixture
+async def authenticated_token(user: User):
     token_delta_expire_time = timedelta(minutes=5)
 
     data = {'sub': user.id, 'username': user.username, 'email': user.email}
@@ -114,8 +109,8 @@ def authenticated_token(user: User):
     return Token(access_token=access_token, token_type='bearer')
 
 
-@pytest.fixture
-def users(session: Session):
+@pytest_asyncio.fixture
+async def users(session: AsyncSession):
     list_users: List[User] = []
     for n in range(11):
         new_user = User(
@@ -125,36 +120,36 @@ def users(session: Session):
         )
         session.add(new_user)
         list_users.append(new_user)
-    session.commit()
+    await session.commit()
     return list_users
 
 
-@pytest.fixture
-def book(session: Session, novelist: Novelist) -> Book:
+@pytest_asyncio.fixture
+async def book(session: AsyncSession, novelist: Novelist) -> Book:
     book = BookFactory.build(id_novelist=novelist.id)
     session.add(book)
-    session.commit()
-    session.refresh(book)
+    await session.commit()
+    await session.refresh(book)
     return book
 
 
-@pytest.fixture
-def book_payload(novelist: Novelist) -> dict:
+@pytest_asyncio.fixture
+async def book_payload(novelist: Novelist) -> dict:
     _book = BookFactory.build(id_novelist=novelist.id)
     book_validated = BookCreate.model_validate(_book, from_attributes=True)
     payload = book_validated.model_dump(by_alias=True)
     return payload
 
 
-@pytest.fixture
-def user_payload() -> dict:
+@pytest_asyncio.fixture
+async def user_payload() -> dict:
     _user = UserFactory()
     user_validated = UserCreate.model_validate(_user, from_attributes=True)
 
     return user_validated.model_dump(by_alias=True)
 
 
-@pytest.fixture(autouse=True)
-def clear_overrides():
+@pytest_asyncio.fixture(autouse=True)
+async def clear_overrides():
     yield
     app.dependency_overrides.clear()

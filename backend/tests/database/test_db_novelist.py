@@ -3,51 +3,38 @@
 # from sqlalchemy import delete, select
 from typing import Callable
 
+import pytest
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from madr.models.novelist import Novelist
 
 
-def test_create_novelist(session: Session):
+@pytest.mark.asyncio
+async def test_create_novelist(session: AsyncSession):
     new_novelist = Novelist(name='alice')
 
     session.add(new_novelist)
-    session.commit()
-
-    novelist = session.scalar(select(Novelist).where(Novelist.name == 'alice'))
+    await session.commit()
+    stmt = select(Novelist).where(Novelist.name == 'alice')
+    novelist = await session.scalar(stmt)
 
     assert novelist is not None
     assert novelist.name == 'alice'
 
 
-def test_novelist_update(
-    session: Session, novelist_with_books: Callable[[int], Novelist]
+@pytest.mark.asyncio
+async def test_novelist_update(
+    session: AsyncSession, novelist_with_books: Callable[[int], Novelist]
 ):
-    novelist = novelist_with_books(35)
+    novelist = await novelist_with_books(35)
     name = novelist.name
     novelist_identifier = novelist.id
     novelist.name = f'modified_{name}'
     session.add(novelist)
-    session.commit()
+    await session.commit()
 
-    novelist_modified = session.scalar(
-        select(Novelist).where(Novelist.id == novelist_identifier)
-    )
+    stmt = select(Novelist).where(Novelist.id == novelist_identifier)
+    novelist_modified = await session.scalar(stmt)
     assert novelist_modified is not None
     assert novelist_modified.name == f'modified_{name}'
-
-
-# def test_delete_user(session: Session, user: User):
-#     session.execute(delete(User).where(User.id == user.id))
-#     session.commit()
-
-#     deleted = session.scalar(select(User).where(User.id == user.id))
-#     assert deleted is None
-
-
-# def test_read_users(session: Session, users: List[User]):
-#     total_expected = 11
-#     finded_users = session.scalars(select(User).where()).all()
-#     assert finded_users is not None
-#     assert len(finded_users) == total_expected
