@@ -11,7 +11,7 @@ jobs:
       ALGORITHM: ${{ secrets.ALGORITHM }}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${{ secrets.ACCESS_TOKEN_EXPIRE_MINUTES }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
-      DATABASE_URL: postgresql+asyncpg://fake:fake@localhost:5432/fake
+      DATABASE_URL: postgresql+psycopg://fake:fake@localhost:5432/fake
       ENV: test
 
     steps:
