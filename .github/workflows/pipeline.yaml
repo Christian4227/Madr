@@ -1,0 +1,20 @@
+name: "bakend_pipeline"
+on: ["push", "pull_request"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Instalar python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Instalar UV
+        run: pipx install uv
+
+      - name: Instalar dependencias com UV
+        run: uv sync
+
+      - name: Executar testes
+        run: uv run task test
