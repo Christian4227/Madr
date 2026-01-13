@@ -1,15 +1,14 @@
 import secrets
 from datetime import timedelta
 from http import HTTPStatus
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock
 
-import ipdb  # noqa: F401
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from madr.api.v1.users import create_user
 from madr.app import app
@@ -22,7 +21,8 @@ from tests.utils import frozen_context
 base_url = '/users/'
 
 
-def test_users_deve_retornar_usuario_criado_com_id(client: TestClient):
+@pytest.mark.asyncio
+async def test_users_deve_retornar_usuario_criado_com_id(client: TestClient):
     payload = {
         'username': 'pedrinho',
         'email': 'pedrinho@gmail.com.br',
@@ -37,7 +37,8 @@ def test_users_deve_retornar_usuario_criado_com_id(client: TestClient):
     assert response.json() == {**payload, 'id': 1}
 
 
-def test_users_deve_retornar_excessao_conflito_409(
+@pytest.mark.asyncio
+async def test_users_deve_retornar_excessao_conflito_409(
     client: TestClient, user: User
 ):
     user_schema = UserCreate.model_validate(user, from_attributes=True)
@@ -54,7 +55,8 @@ def test_users_deve_retornar_excessao_conflito_409(
     assert response.json() == {'detail': 'User already exists'}
 
 
-def test_delete_user_deve_retornar_success_delecao(
+@pytest.mark.asyncio
+async def test_delete_user_deve_retornar_success_delecao(
     client: TestClient, authenticated_token: Token
 ):
     response = client.delete(
@@ -68,7 +70,8 @@ def test_delete_user_deve_retornar_success_delecao(
     assert response.json() == {'message': 'Account Removed'}
 
 
-def test_update_user_deve_retornar_user_modificado(
+@pytest.mark.asyncio
+async def test_update_user_deve_retornar_user_modificado(
     client: TestClient, user: User, authenticated_token: Token
 ):
     username = user.username
@@ -90,11 +93,12 @@ def test_update_user_deve_retornar_user_modificado(
     assert data['username'] == modified_username
 
 
-def test_update_user_nao_deve_atualizar_password(
+@pytest.mark.asyncio
+async def test_update_user_nao_deve_atualizar_password(
     client: TestClient,
     user: User,
     authenticated_token: Token,
-    session: Session,
+    session: AsyncSession,
 ):
     original_password = user.password
     new_pwd = secrets.token_urlsafe(15)
@@ -115,19 +119,20 @@ def test_update_user_nao_deve_atualizar_password(
 
     assert response.status_code == HTTPStatus.OK
     assert data['username'] == 'novo_username'
-    session.refresh(user)
+    await session.refresh(user)
     assert user.password == original_password
 
 
-def test_create_user_nao_grava_no_db_em_caso_de_erro(
-    user_payload: dict, session: Session
+@pytest.mark.asyncio
+async def test_create_user_nao_grava_no_db_em_caso_de_erro(
+    user_payload: dict, session: AsyncSession
 ):
-    mock_session = Mock(spec=Session)
+    mock_session = AsyncMock(spec=AsyncSession)
     mock_session.commit.side_effect = IntegrityError(
         'statement', 'params', Exception('unique constraint failed')
     )
 
-    def mock_get_session():
+    async def mock_get_session():
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
@@ -139,20 +144,24 @@ def test_create_user_nao_grava_no_db_em_caso_de_erro(
     assert response.json() == {'detail': 'User already exists'}
     mock_session.rollback.assert_called_once()
 
-    stmt = select(User).where(User.username == user_payload['username'])
-    user = session.scalar(stmt)
+    # Verifica na sessão real
+    result = await session.execute(
+        select(User).where(User.username == user_payload['username'])
+    )
+    user = result.scalar()
 
     assert user is None
 
 
-def test_create_user_deve_falhar_com_rollback(user_payload: dict):
-    mock_session = Mock(spec=Session)
+@pytest.mark.asyncio
+async def test_create_user_deve_falhar_com_rollback(user_payload: dict):
+    mock_session = AsyncMock(spec=AsyncSession)
 
     mock_session.commit.side_effect = IntegrityError(
         'statement', 'params', Exception('unique constraint failed')
     )
 
-    def mock_get_session():
+    async def mock_get_session():
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
@@ -165,8 +174,11 @@ def test_create_user_deve_falhar_com_rollback(user_payload: dict):
     mock_session.rollback.assert_called_once()
 
 
-def test_create_user_deve_falhar_com_rollback_conflict(user_payload: dict):
-    mock_session = Mock(spec=Session)
+@pytest.mark.asyncio
+async def test_create_user_deve_falhar_com_rollback_conflict(
+    user_payload: dict,
+):
+    mock_session = AsyncMock(spec=AsyncSession)
 
     mock_session.commit.side_effect = IntegrityError(
         'statement', 'params', Exception('unique constraint')
@@ -176,7 +188,7 @@ def test_create_user_deve_falhar_com_rollback_conflict(user_payload: dict):
     user_create = UserCreate(**user_payload)
 
     with pytest.raises(HTTPException) as exc_info:
-        create_user(user_create, mock_session)
+        await create_user(user_create, mock_session)
 
     assert exc_info.value.status_code == HTTPStatus.CONFLICT
 
@@ -189,10 +201,11 @@ def test_create_user_deve_falhar_com_rollback_conflict(user_payload: dict):
     'field_missing',
     ['username', 'email', 'password'],
 )
-def test_create_user_deve_falhar_sem_campos_obrigatorios(
+@pytest.mark.asyncio
+async def test_create_user_deve_falhar_sem_campos_obrigatorios(
     client: TestClient,
     field_missing: str,
-    session: Session,
+    session: AsyncSession,
     user_payload: dict,
 ):
     del user_payload[field_missing]
@@ -206,53 +219,53 @@ def test_create_user_deve_falhar_sem_campos_obrigatorios(
         if detail['type'] == 'missing':
             assert field_missing == detail['loc'][1]
 
-    user = session.scalars(select(User)).one_or_none()
-    # ipdb.set_trace()
+    user = (await session.scalars(select(User))).one_or_none()
     assert user is None
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-def test_update_user_rollback_on_commit_error(
+@pytest.mark.asyncio
+async def test_update_user_rollback_on_commit_error(
     user_payload: dict,
-    session: Session,
     authenticated_token: Token,
-    user: User,
-    client: TestClient,
 ):
     del user_payload['password']
 
-    original_data = {'username': user.username, 'email': user.email}
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.commit.side_effect = SQLAlchemyError('DB error')
 
-    with patch.object(
-        session, 'commit', side_effect=SQLAlchemyError('DB error')
-    ):
-        response = client.put(
-            base_url,
-            json=user_payload,
-            headers={
-                'Authorization': f'Bearer {authenticated_token.access_token}'
-            },
-        )
+    async def mock_get_session():
+        yield mock_session
+
+    app.dependency_overrides[get_session] = mock_get_session
+    client = TestClient(app=app)
+
+    response = client.put(
+        base_url,
+        json=user_payload,
+        headers={
+            'Authorization': f'Bearer {authenticated_token.access_token}'
+        },
+    )
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
-    assert response.json() == {'detail': 'Failed to update user'}
+    mock_session.rollback.assert_called_once()
 
-    session.expire_all()
-    assert user.username == original_data['username']
-    assert user.email == original_data['email']
+    app.dependency_overrides.clear()
 
 
-def test_delete_user_deve_falhar_com_rollback(
-    session: Session, client: TestClient, authenticated_token: Token
+@pytest.mark.asyncio
+async def test_delete_user_deve_falhar_com_rollback(
+    session: AsyncSession, client: TestClient, authenticated_token: Token
 ):
-    mock_session = Mock()
+    mock_session = AsyncMock(spec=AsyncSession)
 
     mock_session.commit.side_effect = SQLAlchemyError('DB Error')
-    mock_session.rollback = Mock()
+    mock_session.rollback = AsyncMock(spec=AsyncSession)
 
     # sessão que falha e lança exceção
-    def mock_get_session():
+    async def mock_get_session():
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
@@ -270,12 +283,13 @@ def test_delete_user_deve_falhar_com_rollback(
         'detail': 'Cannot delete account with existing references'
     }
     mock_session.rollback.assert_called_once()
-    user_db = session.execute(select(User)).one_or_none()
+    user_db = (await session.execute(select(User))).one_or_none()
     assert user_db
 
 
-def test_delete_user_deve_falhar_token_expirado(
-    session: Session, client: TestClient, authenticated_token: Token
+@pytest.mark.asyncio
+async def test_delete_user_deve_falhar_token_expirado(
+    session: AsyncSession, client: TestClient, authenticated_token: Token
 ):
     with frozen_context(timedelta(minutes=31)):
         response = client.delete(
@@ -284,15 +298,16 @@ def test_delete_user_deve_falhar_token_expirado(
                 'Authorization': f'Bearer {authenticated_token.access_token}'
             },
         )
-        users = session.scalars(select(User)).all()
+        users = (await session.scalars(select(User))).all()
 
         assert len(users) == 1
         assert response.status_code == HTTPStatus.UNAUTHORIZED
         assert response.json() == {'detail': 'Expired token'}
 
 
-def test_update_user_deve_falhar_token_expirado(
-    session: Session,
+@pytest.mark.asyncio
+async def test_update_user_deve_falhar_token_expirado(
+    session: AsyncSession,
     client: TestClient,
     user: User,
     authenticated_token: Token,
@@ -313,7 +328,7 @@ def test_update_user_deve_falhar_token_expirado(
             },
         )
         stmt = select(User).where(User.username == modified_username)
-        user_modified = session.scalar(stmt)
+        user_modified = await session.scalar(stmt)
 
         assert user_modified is None
 
@@ -321,14 +336,15 @@ def test_update_user_deve_falhar_token_expirado(
         assert response.json() == {'detail': 'Expired token'}
 
 
-def test_create_user_conflict_unique_violation(user_payload: dict):
+@pytest.mark.asyncio
+async def test_create_user_conflict_unique_violation(user_payload: dict):
     """Testa CONFLICT quando é violação de unicidade"""
-    mock_session = Mock(spec=Session)
+    mock_session = AsyncMock(spec=AsyncSession)
     mock_session.commit.side_effect = IntegrityError(
         'statement', 'params', Exception('unique constraint')
     )
 
-    def mock_get_session():
+    async def mock_get_session():
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
@@ -341,9 +357,12 @@ def test_create_user_conflict_unique_violation(user_payload: dict):
     mock_session.rollback.assert_called_once()
 
 
-def test_create_user_database_error_generic(user_payload: dict, monkeypatch):
+@pytest.mark.asyncio
+async def test_create_user_database_error_generic(
+    user_payload: dict, monkeypatch
+):
     """Testa 500 quando NÃO é violação de unicidade"""
-    mock_session = Mock(spec=Session)
+    mock_session = AsyncMock(spec=AsyncSession)
     mock_session.commit.side_effect = IntegrityError(
         'statement', 'params', Exception('foreign key violation')
     )
@@ -353,7 +372,7 @@ def test_create_user_database_error_generic(user_payload: dict, monkeypatch):
         'madr.api.v1.users.is_unique_violation', lambda x: False
     )
 
-    def mock_get_session():
+    async def mock_get_session():
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session

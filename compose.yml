@@ -6,7 +6,9 @@ services:
     environment:
       POSTGRES_DB: madr_db
       POSTGRES_USER: admin_madr
-      POSTGRES_PASSWORD: example
+      POSTGRES_PASSWORD: pwd_madr_db123
+    ports:
+      - "5430:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
 

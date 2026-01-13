@@ -1,7 +1,6 @@
 from datetime import timedelta
 from http import HTTPStatus
 
-import ipdb  # noqa: F401
 from fastapi import APIRouter, HTTPException
 
 from madr.core.security import (
@@ -16,10 +15,10 @@ router = APIRouter(prefix='/auth', tags=['auth'])
 
 
 @router.post('/token', status_code=HTTPStatus.OK, response_model=Token)
-def login(form_data: request_form_data, session: db_session) -> Token:
+async def login(form_data: request_form_data, session: db_session) -> Token:
     identity = form_data.username
     password = form_data.password
-    result = authenticate_user(session, identity, password)
+    result = await authenticate_user(session, identity, password)
 
     if not (result.authenticated and result.user):
         raise HTTPException(
@@ -32,7 +31,7 @@ def login(form_data: request_form_data, session: db_session) -> Token:
     if result.needs_rehash:
         user.password = get_hash(password)
         session.add(user)
-        session.commit()
+        await session.commit()
 
     token_delta_expire_time = timedelta(minutes=5)
     data = {'sub': user.id, 'username': user.username, 'email': user.email}

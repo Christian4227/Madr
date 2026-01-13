@@ -3,7 +3,9 @@ from http import HTTPStatus
 from unittest.mock import patch
 
 import jwt
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from madr.core.security import generate_token
@@ -52,35 +54,66 @@ def test_login_user_deve_falhar_user_nao_existe(
     assert data == {'detail': 'Incorrect username or password'}
 
 
-def test_login_atualiza_hash_quando_necessario(
+# @pytest.mark.asyncio
+# async def test_login_atualiza_hash_quando_necessario(
+#     client: TestClient, session: Session, user: User
+# ):
+#     password_plain = '123456789'
+
+#     old_hash = user.password
+
+#     # Mock authenticate_user diretamente para retornar needs_rehash=True
+#     with patch('madr.api.v1.auth.authenticate_user') as mock_auth:
+#         from madr.core.security import AuthResult  # noqa: PLC0415
+
+#         # Retorna user com needs_rehash=True
+#         mock_auth.return_value = AuthResult(
+#             authenticated=True, user=user, needs_rehash=True
+#         )
+
+#         response = client.post(
+#             base_url_api,
+#             data={'username': user.username, 'password': password_plain},
+#         )
+
+#         assert response.status_code == HTTPStatus.OK
+
+
+#         # Verificar que hash foi atualizado
+#         await session.refresh(user)
+#         assert user.password != old_hash
+@pytest.mark.asyncio
+async def test_login_atualiza_hash_quando_necessario(
     client: TestClient, session: Session, user: User
 ):
     password_plain = '123456789'
 
+    from argon2 import PasswordHasher  # noqa: PLC0415
+
+    ph = PasswordHasher(time_cost=1, memory_cost=8192, parallelism=1)
+    user.password = ph.hash(password_plain)
+    await session.commit()
+
     old_hash = user.password
+    user_id = user.id
 
-    # Mock authenticate_user diretamente para retornar needs_rehash=True
-    with patch('madr.api.v1.auth.authenticate_user') as mock_auth:
-        from madr.core.security import AuthResult  # noqa: PLC0415
+    response = client.post(
+        base_url_api,
+        data={'username': user.username, 'password': password_plain},
+    )
 
-        # Retorna user com needs_rehash=True
-        mock_auth.return_value = AuthResult(
-            authenticated=True, user=user, needs_rehash=True
-        )
+    assert response.status_code == HTTPStatus.OK
 
-        response = client.post(
-            base_url_api,
-            data={'username': user.username, 'password': password_plain},
-        )
+    session.expire_all()
 
-        assert response.status_code == HTTPStatus.OK
+    result = await session.execute(select(User).where(User.id == user_id))
+    updated_user = result.scalar_one()
 
-        # Verificar que hash foi atualizado
-        session.refresh(user)
-        assert user.password != old_hash
+    assert updated_user.password != old_hash
 
 
-def test_login_nao_atualiza_hash_quando_desnecessario(
+@pytest.mark.asyncio
+async def test_login_nao_atualiza_hash_quando_desnecessario(
     client: TestClient, session: Session, user: User
 ):
     password_plain = '123456789'
@@ -101,7 +134,7 @@ def test_login_nao_atualiza_hash_quando_desnecessario(
         )
 
         assert response.status_code == HTTPStatus.OK
-        session.refresh(user)
+        await session.refresh(user)
         assert user.password == old_hash
 
 
