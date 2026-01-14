@@ -4,6 +4,7 @@ from typing import Awaitable, Callable, Optional
 from unittest.mock import Mock, patch
 from urllib.parse import urlencode
 
+import ipdb  # noqa
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
@@ -136,6 +137,7 @@ async def test_create_book_deve_falhar_sem_authorization(
     book_payload: dict,
 ):
     response = client.post(base_url, json=book_payload)
+    # ipdb.set_trace()
     assert response.status_code == HTTPStatus.UNAUTHORIZED
     assert response.json()['detail'] == 'Not authenticated'
 
@@ -577,7 +579,7 @@ async def test_read_books_by_partial_name_deve_retornar_livros_filtrados(
 ):
 
     [
-        await novelist_with_books(10, name_prefix=lang)
+        await novelist_with_books(10, name_prefix=lang)  # type: ignore
         for lang in ('Python', 'Java', 'Rust')
     ]
 
@@ -689,7 +691,7 @@ async def test_read_books_sem_filtros_deve_retornar_todos(
         [int, Optional[str], Optional[str]], Awaitable[Novelist]
     ],
 ):
-    await novelist_with_books(15)
+    await novelist_with_books(15, None, None)
 
     response = client.get(base_url)
 
@@ -710,7 +712,7 @@ async def test_read_books_filtro_sem_resultado_deve_retornar_lista_vazia(
         [int, Optional[str], Optional[str]], Awaitable[Novelist]
     ],
 ):
-    await novelist_with_books(5, name_prefix='Python')
+    await novelist_with_books(5, name_prefix='Python')  # type: ignore
 
     uri = f'{base_url}?' + urlencode({'name': 'NonExistent'})
     response = client.get(uri)
@@ -784,3 +786,30 @@ async def test_read_book_by_id_deve_falhar_e_retornar_exception(
     assert response.status_code == HTTPStatus.NOT_FOUND
 
     assert response.json() == {'detail': 'Book not found'}
+
+
+@pytest.mark.asyncio
+async def test_read_books_ordenacao_parametrizada(client, novelist_with_books):
+    """Testa ordenação com diferentes combinações"""
+
+    await novelist_with_books(30)
+
+    for order_by in ['id', 'name', 'title', 'year']:
+        for order_dir in ['asc', 'desc']:
+            params = urlencode({
+                'orderBy': order_by,
+                'orderDir': order_dir,
+                'limit': 5,
+            })
+            response = client.get(f'/books/?{params}')
+
+            assert response.status_code == HTTPStatus.OK
+            data = response.json()
+
+            if len(data['data']) > 1:
+                sorted_data = sorted(
+                    data['data'],
+                    key=lambda x: x[order_by],
+                    reverse=(order_dir == 'desc'),
+                )
+                assert data['data'] == sorted_data

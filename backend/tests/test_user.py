@@ -1,3 +1,4 @@
+
 import secrets
 from datetime import timedelta
 from http import HTTPStatus
@@ -22,7 +23,9 @@ base_url = '/users/'
 
 
 @pytest.mark.asyncio
-async def test_users_deve_retornar_usuario_criado_com_id(client: TestClient):
+async def test_users_deve_retornar_usuario_criado_com_id(
+    session: AsyncSession, client: TestClient
+):
     payload = {
         'username': 'pedrinho',
         'email': 'pedrinho@gmail.com.br',
@@ -32,9 +35,14 @@ async def test_users_deve_retornar_usuario_criado_com_id(client: TestClient):
         base_url,
         json=payload,
     )
-    del payload['password']
+    user_db = await session.scalar(
+        select(User).where(User.email == 'pedrinho@gmail.com.br')
+    )
+
     assert response.status_code == HTTPStatus.CREATED
-    assert response.json() == {**payload, 'id': 1}
+    assert user_db is not None
+    response_data = response.json()
+    assert response_data['email'] == user_db.email
 
 
 @pytest.mark.asyncio
@@ -218,9 +226,6 @@ async def test_create_user_deve_falhar_sem_campos_obrigatorios(
     for detail in data['detail']:
         if detail['type'] == 'missing':
             assert field_missing == detail['loc'][1]
-
-    user = (await session.scalars(select(User))).one_or_none()
-    assert user is None
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 

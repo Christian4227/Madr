@@ -2,6 +2,7 @@ from typing import List
 
 import pytest
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from madr.models.user import User
@@ -9,7 +10,7 @@ from madr.models.user import User
 
 @pytest.mark.asyncio
 async def test_create_user(session: AsyncSession):
-    new_user = User(username='alice', password='secret', email='teste@test')
+    new_user = User(username='alice', password='secret123', email='teste@test')
 
     session.add(new_user)
     await session.commit()
@@ -18,6 +19,46 @@ async def test_create_user(session: AsyncSession):
 
     assert user is not None
     assert user.username == 'alice'
+
+
+@pytest.mark.asyncio
+async def test_create_user_defalhar_por_password_curto(session: AsyncSession):
+    new_user = User(username='alice', password='short', email='teste@test')
+    session.add(new_user)
+
+    with pytest.raises(IntegrityError, match='ck_user_password_len'):
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_create_user_defalhar_por_name_curta(session: AsyncSession):
+    new_user = User(username='', password='short12345', email='teste@test')
+    session.add(new_user)
+
+    with pytest.raises(IntegrityError, match='ck_user_username_len'):
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_create_user_defalhar_por_email_curto(session: AsyncSession):
+    new_user = User(username='alice_silva', password='short12345', email='t@')
+    session.add(new_user)
+
+    with pytest.raises(IntegrityError, match='ck_user_email_len'):
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_create_user_defalhar_por_email_sem_formato(
+    session: AsyncSession,
+):
+    new_user = User(
+        username='alice_silva', password='short12345', email='test.com.br'
+    )
+    session.add(new_user)
+
+    with pytest.raises(IntegrityError, match='ck_user_email_has_at'):
+        await session.commit()
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from testcontainers.postgres import PostgresContainer
 
 from madr.app import app
+from madr.core.database import get_session
 from madr.core.security import generate_token, get_hash
 from madr.models import table_registry
 from madr.models.book import Book
@@ -28,15 +29,66 @@ def engine():
 
 
 @pytest_asyncio.fixture
-async def client(session: AsyncSession):
-    from madr.core.database import get_session  # noqa: PLC0415
+async def client(session: AsyncSession, user: User):
 
-    def override_get_db():
+    async def override_get_db():
         yield session
 
+    async def override_get_current_user():
+        return user
+
     app.dependency_overrides[get_session] = override_get_db
-    yield TestClient(app=app)
+    # app.dependency_overrides[get_current_user] = override_get_current_user
+
+    yield TestClient(app)
+
     app.dependency_overrides.clear()
+
+
+# @pytest_asyncio.fixture
+# async def client(session: AsyncSession, user: User):
+#     def override_get_db():
+#         yield session
+
+#     async def override_get_current_user():
+#         return user  # ou UserPublic.from_orm(user)
+
+#     app.dependency_overrides[get_session] = override_get_db
+#     app.dependency_overrides[get_current_user] = override_get_current_user
+
+#     yield TestClient(app)
+
+#     app.dependency_overrides.clear()
+
+
+# @pytest_asyncio.fixture
+# async def client(session: AsyncSession, user: User):
+
+#     def override_get_db():
+#         yield session
+
+#     async def override_active_user():
+#         return user
+
+#     app.dependency_overrides[get_session] = override_get_db
+#     app.dependency_overrides[active_user] = override_active_user
+# # type: ignore
+
+#     yield TestClient(app=app)
+
+#     app.dependency_overrides.clear()
+
+
+# @pytest_asyncio.fixture
+# async def client(session: AsyncSession):
+#     from madr.core.database import get_session  # noqa: PLC0415
+
+#     def override_get_db():
+#         yield session
+
+#     app.dependency_overrides[get_session] = override_get_db
+#     yield TestClient(app=app)
+#     app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture

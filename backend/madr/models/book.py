@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import CheckConstraint, ForeignKey
 from sqlalchemy.orm import (
     Mapped,
     mapped_as_dataclass,
@@ -20,7 +20,10 @@ if TYPE_CHECKING:
 @mapped_as_dataclass(table_registry)
 class Book(DateMixin):
     __tablename__ = 'books'
-
+    __table_args__ = (
+        CheckConstraint('char_length(name) > 0', name='ck_book_name_len'),
+        CheckConstraint('char_length(title) > 0', name='ck_book_title_len'),
+    )
     id: Mapped[int] = mapped_column(init=False, primary_key=True)
     name: Mapped[str] = mapped_column(unique=True, nullable=False)
     year: Mapped[int] = mapped_column(index=True, nullable=False)

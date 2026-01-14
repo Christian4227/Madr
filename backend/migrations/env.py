@@ -2,8 +2,7 @@ import asyncio
 from logging.config import fileConfig
 import sys
 from madr.config import Settings
-from madr.models import book, novelist, table_registry
-from madr.models import user
+from madr.models import Book, Novelist, table_registry, User
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
@@ -16,7 +15,8 @@ if sys.platform == 'win32':
 # access to the values within the .ini file in use.
 config = context.config
 
-config.set_main_option('sqlalchemy.url', Settings().DATABASE_URL)
+settings= Settings() # type: ignore
+config.set_main_option('sqlalchemy.url', settings.DATABASE_URL)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

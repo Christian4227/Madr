@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import (
     Mapped,
     mapped_as_dataclass,
@@ -19,6 +20,9 @@ if TYPE_CHECKING:
 @mapped_as_dataclass(table_registry)
 class Novelist(DateMixin):
     __tablename__ = 'novelists'
+    __table_args__ = (
+        CheckConstraint('char_length(name) > 0', name='ck_novelist_name_len'),
+    )
     id: Mapped[int] = mapped_column(init=False, primary_key=True)
     name: Mapped[str] = mapped_column(unique=True)
     books: Mapped[list[Book]] = relationship(
@@ -27,3 +31,6 @@ class Novelist(DateMixin):
         lazy='selectin',
         back_populates='novelist',
     )
+
+    def __init__(self, name: str):
+        self.name = name

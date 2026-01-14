@@ -44,10 +44,13 @@ async def read_books_by_filter(
     if query.title and query.title.strip():
         stmt = stmt.where(Book.title.ilike(f'%{query.title.strip()}%'))
 
-    stmt = stmt.offset(query.offset)
-    stmt = stmt.limit(query.limit)
-    stmt = stmt.order_by(
-        order_column.asc() if order_dir == 'asc' else order_column.desc()
+    stmt = (
+        stmt
+        .order_by(
+            order_column.asc() if order_dir == 'asc' else order_column.desc()
+        )
+        .offset(query.offset)
+        .limit(query.limit)
     )
 
     results = (await session.execute(stmt)).mappings().all()

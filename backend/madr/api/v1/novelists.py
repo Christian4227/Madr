@@ -1,5 +1,6 @@
 from http import HTTPStatus
 
+import ipdb  # noqa: F401
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -48,17 +49,22 @@ async def read_novelists_by(
     order_column = NOVELIST_ORDERABLE_FIELDS[order_by]
 
     stmt = select(
-        *NOVELIST_ORDERABLE_FIELDS.values(), func.count().over().label('total')
+        *NOVELIST_ORDERABLE_FIELDS.values(),
+        func.count().over().label('total'),
     )
 
     if query.name and query.name.strip():
         stmt = stmt.where(Novelist.name.ilike(f'%{query.name.strip()}%'))
-    results = (await session.execute(stmt)).mappings().all()
-    stmt = stmt.offset(offset)
-    stmt = stmt.limit(limit)
-    stmt = stmt.order_by(
-        order_column.asc() if order_dir == 'asc' else order_column.desc()
+
+    stmt = (
+        stmt
+        .order_by(
+            order_column.asc() if order_dir == 'asc' else order_column.desc()
+        )
+        .offset(offset)
+        .limit(limit)
     )
+
     results = (await session.execute(stmt)).mappings().all()
     if len(results) == 0:
         return PublicNovelistsPaginated(page=query.page)
@@ -92,12 +98,15 @@ async def create_novelist(
         await session.refresh(db_novelist)
     except IntegrityError as err:
         await session.rollback()
-
         if is_unique_violation(err):
             raise HTTPException(
                 status_code=HTTPStatus.CONFLICT,
                 detail='Novelist already exists',
             )
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail='Database error',
+        )
     except SQLAlchemyError:
         await session.rollback()
         raise HTTPException(
@@ -134,19 +143,13 @@ async def update_novelist(
         await session.commit()
         await session.refresh(existing_novelist)
     except IntegrityError as err:
+        # ipdb.set_trace()
         await session.rollback()
         if is_unique_violation(err):
             raise HTTPException(
                 status_code=HTTPStatus.CONFLICT,
                 detail='Novelist already exists',
             )
-    except SQLAlchemyError:
-        await session.rollback()
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail='Database error',
-        )
-
     return existing_novelist
 
 
@@ -168,15 +171,8 @@ async def remove_novelist(
             status_code=HTTPStatus.NOT_FOUND, detail='Novelist not found'
         )
 
-        # try:
     await session.delete(existing_novelist)
     await session.commit()
-    # except SQLAlchemyError:
-    #     await session.rollback()
-    #     raise HTTPException(
-    #         status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-    #         detail='Cannot delete novelist with existing references',
-    #     )
 
     return {'message': 'Novelist Removed'}
 
