@@ -29,8 +29,6 @@ class BookFactory(factory.Factory):
         model = Book
 
     name = factory.Sequence(lambda n: f'book_name_{n}')
-    year = factory.LazyFunction(
-        lambda: str(fuzzy.FuzzyInteger(1560, datetime.now().year).fuzz())
-    )
+    year = fuzzy.FuzzyInteger(1560, datetime.now().year)
     title = factory.Sequence(lambda n: f'book_title_{n}')
     id_novelist = None

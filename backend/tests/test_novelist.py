@@ -7,13 +7,11 @@ from unittest.mock import patch
 from urllib.parse import urlencode
 
 import factory
-import ipdb  # noqa: F401
 import pytest
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from madr.app import app
 from madr.models.book import Book
 from madr.models.novelist import Novelist
 from tests.factories import NovelistFactory
@@ -32,7 +30,7 @@ async def test_create_novelist_deve_retornar_novelist_com_id(
     client, authenticated_token
 ):
     payload = {'name': 'Zaraulstra'}
-    response = client.post(
+    response = await client.post(
         url_base,
         json=payload,
         headers={
@@ -48,7 +46,7 @@ async def test_create_novelist_deve_falhar_retornar_conflito(
     client, authenticated_token, novelist
 ):
     payload = {'name': novelist.name}
-    response = client.post(
+    response = await client.post(
         url_base,
         json=payload,
         headers={
@@ -62,7 +60,7 @@ async def test_create_novelist_deve_falhar_retornar_conflito(
 @pytest.mark.asyncio
 async def test_create_novelist_deve_falhar_com_nao_autorizacao(client):
     payload = {'name': 'Zaraulstra'}
-    response = client.post(url_base, json=payload, headers={})
+    response = await client.post(url_base, json=payload, headers={})
     assert response.status_code == HTTPStatus.UNAUTHORIZED
     assert response.json() == {'detail': 'Not authenticated'}
 
@@ -74,7 +72,7 @@ async def test_create_novelist_deve_falhar_com_token_expirado(
     payload = {'name': 'Zaraulstra da Bahia'}
 
     with frozen_context(timedelta(minutes=31)):
-        response = client.post(
+        response = await client.post(
             url_base,
             json=payload,
             headers={
@@ -100,7 +98,7 @@ async def test_create_novelist_deve_falhar_com_erro_de_banco(
         'commit',
         side_effect=SQLAlchemyError('Generic Error DB'),
     ):
-        response = client.post(
+        response = await client.post(
             url_base,
             json={'name': 'Test Novelist'},
             headers={
@@ -117,7 +115,7 @@ async def test_create_novelist_deve_falhar_com_nome_vazio(
     client, authenticated_token
 ):
     payload = {'name': None}
-    response = client.post(
+    response = await client.post(
         url_base,
         json=payload,
         headers={
@@ -139,7 +137,7 @@ async def test_update_novelist_deve_retornar_novelist_modificado(
     modified_name = f'modified_{novelist.name}'
     payload = {'name': modified_name}
 
-    response = client.put(
+    response = await client.put(
         f'{url_base}{novelist.id}',
         json=payload,
         headers={
@@ -157,7 +155,7 @@ async def test_update_novelist_deve_falhar_com_not_found(
 ):
     payload = {'name': f'modified_{novelist.name}'}
 
-    response = client.put(
+    response = await client.put(
         f'{url_base}{novelist.id + 89749}',
         json=payload,
         headers={
@@ -178,7 +176,7 @@ async def test_update_novelist_deve_falhar_unique_violation(
     session.add_all([novelist1, novelist2])
     await session.commit()
 
-    response = client.put(
+    response = await client.put(
         f'{url_base}{novelist2.id}',
         json={'name': novelist1.name},
         headers={
@@ -199,11 +197,10 @@ async def test_update_novelist_deve_falhar_com_rollback(
     }
 
     novelists = [await novelist_with_books(1) for _ in range(13)]
-    # ipdb.set_trace()
     random_novelist = random.choice(novelists)
 
     # tentativa de mudar o nome para um nome que já existe
-    response = client.put(
+    response = await client.put(
         f'{url_base}{novelist.id}',
         json={'name': random_novelist.name},
         headers=auth_header,
@@ -224,7 +221,7 @@ async def test_update_novelist_deve_falhar_com_token_expirado(
     payload = {'name': modified_name}
 
     with frozen_context(timedelta(minutes=31)):
-        response = client.put(
+        response = await client.put(
             f'{url_base}{novelist.id}',
             json=payload,
             headers={
@@ -246,7 +243,7 @@ async def test_update_novelist_sem_mudancas_deve_ter_sucesso(
     client, novelist, authenticated_token
 ):
     payload = {'name': novelist.name}
-    response = client.put(
+    response = await client.put(
         f'{url_base}{novelist.id}',
         json=payload,
         headers={
@@ -262,7 +259,7 @@ async def test_update_novelist_com_payload_vazio_deve_ter_sucesso(
     client, novelist, authenticated_token
 ):
     original_name = novelist.name
-    response = client.put(
+    response = await client.put(
         f'{url_base}{novelist.id}',
         json={},
         headers={
@@ -284,7 +281,7 @@ async def test_read_novelists_sem_filtros_deve_retornar_todos(client, session):
     novelists = NovelistFactory.build_batch(limit)
     session.add_all(novelists)
     await session.commit()
-    response = client.get(f'{url_base}?limit={limit}')
+    response = await client.get(f'{url_base}?limit={limit}')
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -299,7 +296,7 @@ async def test_read_novelists_com_limit_deve_respeitar_limite(client, session):
     session.add_all(novelists)
     await session.commit()
 
-    response = client.get(f'{url_base}?limit=10')
+    response = await client.get(f'{url_base}?limit=10')
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -315,7 +312,7 @@ async def test_read_novelists_com_paginacao_deve_retornar_pagina_correta(
     session.add_all(novelists)
     await session.commit()
 
-    response = client.get(f'{url_base}?limit=10&page=2')
+    response = await client.get(f'{url_base}?limit=10&page=2')
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -333,7 +330,7 @@ async def test_read_novelists_ultima_pagina_deve_indicar_sem_proxima(
     session.add_all(novelists)
     await session.commit()
 
-    response = client.get(f'{url_base}?limit=10&page=3')
+    response = await client.get(f'{url_base}?limit=10&page=3')
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -363,7 +360,7 @@ async def test_read_novelists_by_filters_pagination_ordenation_deve_ter_sucesso(
     session.add_all(novelists)
     await session.commit()
     url = url_base + uri
-    response = client.get(url)
+    response = await client.get(url)
 
     response_data = response.json()
     data = response_data['data']
@@ -394,7 +391,7 @@ async def test_read_novelists_by_filters_pagination_ordenation_deve_ter_sucesso_
     session.add_all(novelists)
     await session.commit()
     url = url_base + uri
-    response = client.get(url)
+    response = await client.get(url)
 
     response_data = response.json()
     data = response_data['data']
@@ -412,7 +409,7 @@ async def test_read_novelists_filtro_nome_case_insensitive(client, session):
     session.add_all([novelist1, novelist2, novelist3])
     await session.commit()
 
-    response = client.get(f'{url_base}?name=JORGE')
+    response = await client.get(f'{url_base}?name=JORGE')
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -428,7 +425,7 @@ async def test_read_novelists_filtro_nome_com_espacos_deve_funcionar(
     session.add(novelist1)
     await session.commit()
 
-    response = client.get(f'{url_base}?name=  Jorge  ')
+    response = await client.get(f'{url_base}?name=  Jorge  ')
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -449,7 +446,7 @@ async def test_read_novelists_ordenacao_deve_funcionar(
     session.add_all(novelists)
     await session.commit()
 
-    response = client.get(
+    response = await client.get(
         f'{url_base}?orderBy={order_by}&orderDir={order_dir}'
     )
     response_data = response.json()
@@ -465,7 +462,7 @@ async def test_read_novelists_ordenacao_deve_funcionar(
 
 @pytest.mark.asyncio
 async def test_read_novelists_vazio_deve_retornar_lista_vazia(client):
-    response = client.get(url_base)
+    response = await client.get(url_base)
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -483,7 +480,7 @@ async def test_read_books_of_novelist_deve_retornar_lista_de_livros_de_um_romanc
     client, novelist_with_books: Callable[..., Awaitable[Novelist]]
 ):
     novelist = await novelist_with_books(350)
-    response = client.get(f'{url_base}{novelist.id}/books')
+    response = await client.get(f'{url_base}{novelist.id}/books')
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -505,7 +502,7 @@ async def test_read_books_of_novelist_deve_retornar_livros_de_um_romancista_com_
     novelist = await novelist_with_books(total_books)
 
     url = f'{url_base}{novelist.id}/books?{query_string}'
-    response = client.get(url)
+    response = await client.get(url)
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -524,7 +521,7 @@ async def test_read_books_of_novelist_deve_retornar_0_livros_por_pagina_inexiste
     novelist = await novelist_with_books(total_books)
 
     url = f'{url_base}{novelist.id}/books?{query_string}'
-    response = client.get(url)
+    response = await client.get(url)
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -550,7 +547,7 @@ async def test_read_books_of_novelist_deve_retornar_0_livros_por_pagina_muito_ac
     novelist = await novelist_with_books(total_books)
 
     url = f'{url_base}{novelist.id}/books?{query_string}'
-    response = client.get(url)
+    response = await client.get(url)
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -573,7 +570,7 @@ async def test_read_books_of_novelist_deve_retornar_zero_livros_de_um_romancista
     novelist = await novelist_with_books(total_books)
 
     url = f'{url_base}{novelist.id}/books?{query_string}'
-    response = client.get(url)
+    response = await client.get(url)
 
     response_data = response.json()
     assert response.status_code == HTTPStatus.OK
@@ -602,7 +599,7 @@ async def test_read_books_of_novelist_deve_retornar_livros_ordenados(
     )
 
     url = f'{url_base}{novelist.id}/books?{query_string}'
-    response = client.get(url)
+    response = await client.get(url)
     response_data = response.json()
     assert response.status_code == HTTPStatus.OK
 
@@ -619,7 +616,9 @@ async def test_read_books_of_novelist_primeira_pagina_deve_indicar_sem_anterior(
     client, novelist_with_books: Callable[..., Awaitable[Novelist]]
 ):
     novelist = await novelist_with_books(50)
-    response = client.get(f'{url_base}{novelist.id}/books?limit=10&page=1')
+    response = await client.get(
+        f'{url_base}{novelist.id}/books?limit=10&page=1'
+    )
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -635,7 +634,7 @@ async def test_read_books_of_novelist_com_id_inexistente_deve_retornar_vazio(
     max_id = await session.scalar(stmt)
     inexistent_id = (max_id or 0) + 1
 
-    response = client.get(f'{url_base}{inexistent_id}/books')
+    response = await client.get(f'{url_base}{inexistent_id}/books')
     response_data = response.json()
 
     assert response.status_code == HTTPStatus.OK
@@ -655,7 +654,7 @@ async def test_delete_novelist_deve_retornar_success_delecao(
     novelist_with_books: Callable[..., Awaitable[Novelist]],
 ):
     novelist = await novelist_with_books(25)
-    response = client.delete(
+    response = await client.delete(
         f'{url_base}{novelist.id}',
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -676,7 +675,7 @@ async def test_delete_novelist_e_livros_deve_retornar_success(
     novelist = await novelist_with_books(15)
     novelist_id = novelist.id
 
-    response = client.delete(
+    response = await client.delete(
         f'{url_base}{novelist_id}',
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -706,7 +705,7 @@ async def test_delete_novelist_deve_retornar_not_found(
     max_id = await session.scalar(stmt)
     last_id_novelist = 0 if max_id is None else max_id
 
-    response = client.delete(
+    response = await client.delete(
         f'{url_base}{last_id_novelist + 1}',
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -725,7 +724,7 @@ async def test_delete_novelist_deve_retornar_unauthorized(
     client, novelist_with_books: Callable[..., Awaitable[Novelist]]
 ):
     novelist = await novelist_with_books(15)
-    response = client.delete(f'{url_base}{novelist.id}')
+    response = await client.delete(f'{url_base}{novelist.id}')
     assert response.status_code == HTTPStatus.UNAUTHORIZED
     assert response.json() == {'detail': 'Not authenticated'}
 
@@ -735,7 +734,7 @@ async def test_delete_novelist_com_token_expirado_deve_falhar(
     client, novelist, authenticated_token
 ):
     with frozen_context(timedelta(minutes=31)):
-        response = client.delete(
+        response = await client.delete(
             f'{url_base}{novelist.id}',
             headers={
                 'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -754,7 +753,7 @@ async def test_delete_novelist_sem_livros_deve_ter_sucesso(
     session.add(novelist)
     await session.commit()
 
-    response = client.delete(
+    response = await client.delete(
         f'{url_base}{novelist.id}',
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -772,9 +771,8 @@ async def test_delete_novelist_sem_livros_deve_ter_sucesso(
 
 @pytest.mark.asyncio
 async def test_create_novelist_deve_falhar_integrity_error_generico(
-    client: TestClient, authenticated_token, user, session
+    authenticated_token, user, session, client: AsyncClient
 ):
-    """Testa que IntegrityError sem unique violation não lança exceção extra"""
     headers = {'Authorization': f'Bearer {authenticated_token.access_token}'}
     # Mock is_unique_violation para retornar False
     with patch(
@@ -787,8 +785,7 @@ async def test_create_novelist_deve_falhar_integrity_error_generico(
                 'statement', 'params', Exception('check constraint')
             ),
         ):
-            client = TestClient(app)
-            response = client.post(
+            response = await client.post(
                 url_base, json={'name': 'Test'}, headers=headers
             )
 
@@ -811,7 +808,7 @@ async def test_create_novelist_deve_falhar_integrity_error_generico(
 #             ),
 #         ):
 #             client = TestClient(app)
-#             response = client.put(
+#             response = await client.put(
 #                 f'{url_base}{novelist.id}',
 #                 json={'name': 'Updated'},
 #                 headers=headers,

@@ -1,6 +1,5 @@
 from http import HTTPStatus
 
-import ipdb  # noqa: F401
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -143,7 +142,6 @@ async def update_novelist(
         await session.commit()
         await session.refresh(existing_novelist)
     except IntegrityError as err:
-        # ipdb.set_trace()
         await session.rollback()
         if is_unique_violation(err):
             raise HTTPException(

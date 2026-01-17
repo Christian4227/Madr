@@ -9,6 +9,7 @@ dependencies = [
     "alembic>=1.17.2",
     "asyncpg>=0.31.0",
     "fastapi[standard]",
+    "httpx>=0.28.1",
     "pwdlib[argon2]>=0.3.0",
     "pydantic-settings>=2.12.0",
     "pyjwt>=2.10.1",

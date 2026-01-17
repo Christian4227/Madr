@@ -4,9 +4,8 @@ from typing import Awaitable, Callable, Optional
 from unittest.mock import Mock, patch
 from urllib.parse import urlencode
 
-import ipdb  # noqa
 import pytest
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,11 +30,11 @@ base_url = '/books/'
 
 @pytest.mark.asyncio
 async def test_create_book_deve_ter_exito_e_retornar_book_com_id(
-    client: TestClient,
+    client: AsyncClient,
     authenticated_token: Token,
     book_payload: dict,
 ):
-    response = client.post(
+    response = await client.post(
         base_url,
         json=book_payload,
         headers={
@@ -48,11 +47,11 @@ async def test_create_book_deve_ter_exito_e_retornar_book_com_id(
 # @pytest.mark.asyncio
 # async def test_create_book_deve_falhar_com_conflict(
 #     session: AsyncSession,
-#     client: TestClient,
+#      client: AsyncClient,
 #     authenticated_token: Token,
 #     book: Book,
 # ):
-#     response = client.post(
+#     response = await client.post(
 #         base_url,
 #         json={
 #             'idNovelist': book.id_novelist,
@@ -77,14 +76,14 @@ async def test_create_book_deve_ter_exito_e_retornar_book_com_id(
 @pytest.mark.asyncio
 async def test_create_book_deve_falhar_com_conflict(
     session: AsyncSession,
-    client: TestClient,
+    client: AsyncClient,
     authenticated_token: Token,
     book: Book,
 ):
     book_name = book.name
     book_id_novelist = book.id_novelist
 
-    response = client.post(
+    response = await client.post(
         base_url,
         json={
             'idNovelist': book_id_novelist,
@@ -110,11 +109,11 @@ async def test_create_book_deve_falhar_com_conflict(
 async def test_create_book_deve_falhar_por_nao_existir_romancista(
     session: AsyncSession,
     authenticated_token: Token,
-    client: TestClient,
+    client: AsyncClient,
     book_payload: dict,
 ):
     book_payload['idNovelist'] = 99999
-    response = client.post(
+    response = await client.post(
         base_url,
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -133,21 +132,20 @@ async def test_create_book_deve_falhar_por_nao_existir_romancista(
 
 @pytest.mark.asyncio
 async def test_create_book_deve_falhar_sem_authorization(
-    client: TestClient,
+    client: AsyncClient,
     book_payload: dict,
 ):
-    response = client.post(base_url, json=book_payload)
-    # ipdb.set_trace()
+    response = await client.post(base_url, json=book_payload)
     assert response.status_code == HTTPStatus.UNAUTHORIZED
     assert response.json()['detail'] == 'Not authenticated'
 
 
 @pytest.mark.asyncio
 async def test_create_book_deve_falhar_sem_token_valido(
-    client: TestClient,
+    client: AsyncClient,
     book_payload: dict,
 ):
-    response = client.post(
+    response = await client.post(
         base_url,
         headers={'Authorization': 'Bearer eyasdasdasd'},
         json=book_payload,
@@ -160,11 +158,11 @@ async def test_create_book_deve_falhar_sem_token_valido(
 async def test_create_book_deve_falhar_por_token_expirado(
     session: AsyncSession,
     authenticated_token: Token,
-    client: TestClient,
+    client: AsyncClient,
     book_payload: dict,
 ):
     with frozen_context(timedelta(minutes=31)):
-        response = client.post(
+        response = await client.post(
             base_url,
             headers={
                 'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -185,13 +183,13 @@ async def test_create_book_deve_falhar_por_token_expirado(
 async def test_create_book_deve_falhar_user_removido(
     authenticated_token: Token,
     book_payload: dict,
-    client: TestClient,
+    client: AsyncClient,
     session: AsyncSession,
 ):
     await session.execute(delete(User))
     await session.commit()
 
-    response = client.post(
+    response = await client.post(
         base_url,
         json=book_payload,
         headers={
@@ -210,12 +208,12 @@ async def test_create_book_deve_falhar_user_removido(
 @pytest.mark.asyncio
 async def test_create_book_deve_falhar_sem_campos_obrigatorios(
     field_missing: str,
-    client: TestClient,
+    client: AsyncClient,
     authenticated_token: Token,
     book_payload: dict,
 ):
     del book_payload[field_missing]
-    response = client.post(
+    response = await client.post(
         base_url,
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -238,12 +236,12 @@ async def test_create_book_deve_falhar_sem_campos_obrigatorios(
 @pytest.mark.asyncio
 async def test_create_book_deve_falhar_com_null_em_campos_obrigatorios(
     field: str,
-    client: TestClient,
+    client: AsyncClient,
     authenticated_token: Token,
     book_payload: dict,
 ):
     book_payload[field] = None
-    response = client.post(
+    response = await client.post(
         base_url,
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -271,15 +269,16 @@ async def test_create_book_deve_falhar_com_erro_de_banco_e_rollback(
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
-    client = TestClient(app=app)
-
-    response = client.post(
-        base_url,
-        json=book_payload,
-        headers={
-            'Authorization': f'Bearer {authenticated_token.access_token}'
-        },
-    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as client:
+        response = await client.post(
+            base_url,
+            json=book_payload,
+            headers={
+                'Authorization': f'Bearer {authenticated_token.access_token}'
+            },
+        )
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert response.json() == {'detail': 'Database error'}
@@ -307,15 +306,16 @@ async def test_create_book_deve_falhar_integrity_error_generico(
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
-    client = TestClient(app=app)
-
-    response = client.post(
-        base_url,
-        json=book_payload,
-        headers={
-            'Authorization': f'Bearer {authenticated_token.access_token}'
-        },
-    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as client:
+        response = await client.post(
+            base_url,
+            json=book_payload,
+            headers={
+                'Authorization': f'Bearer {authenticated_token.access_token}'
+            },
+        )
 
     assert response.status_code == HTTPStatus.CONFLICT
     assert response.json() == {'detail': 'Integrity violation'}
@@ -334,15 +334,16 @@ async def test_create_book_falha_exception_generica(
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
-    client = TestClient(app)
-
-    response = client.post(
-        base_url,
-        json=book_payload,
-        headers={
-            'Authorization': f'Bearer {authenticated_token.access_token}'
-        },
-    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as client:
+        response = await client.post(
+            base_url,
+            json=book_payload,
+            headers={
+                'Authorization': f'Bearer {authenticated_token.access_token}'
+            },
+        )
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert response.json() == {'detail': 'Internal error'}
@@ -355,12 +356,12 @@ async def test_create_book_falha_exception_generica(
 
 @pytest.mark.asyncio
 async def test_update_book_deve_ter_exito_e_retornar_book_modificado(
-    client: TestClient,
+    client: AsyncClient,
     authenticated_token: Token,
     book: Book,
 ):
     payload = {'title': 'Modified Title'}
-    response = client.put(
+    response = await client.put(
         f'{base_url}{book.id}',
         json=payload,
         headers={
@@ -374,11 +375,11 @@ async def test_update_book_deve_ter_exito_e_retornar_book_modificado(
 
 @pytest.mark.asyncio
 async def test_update_book_deve_falhar_book_not_found(
-    client: TestClient,
+    client: AsyncClient,
     authenticated_token: Token,
 ):
     payload = {'title': 'Modified Title'}
-    response = client.put(
+    response = await client.put(
         f'{base_url}99999',
         json=payload,
         headers={
@@ -394,11 +395,11 @@ async def test_update_book_deve_falhar_book_not_found(
 async def test_update_book_deve_falhar_por_nao_existir_romancista(
     novelist: Novelist,
     authenticated_token: Token,
-    client: TestClient,
+    client: AsyncClient,
     book: Book,
 ):
     payload = {'idNovelist': novelist.id + 10}
-    response = client.put(
+    response = await client.put(
         f'{base_url}{book.id}',
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -413,7 +414,7 @@ async def test_update_book_deve_falhar_por_nao_existir_romancista(
 @pytest.mark.asyncio
 async def test_update_book_deve_falhar_unique_violation(
     book: Book,
-    client: TestClient,
+    client: AsyncClient,
     authenticated_token: Token,
     session: AsyncSession,
 ):
@@ -428,7 +429,7 @@ async def test_update_book_deve_falhar_unique_violation(
     session.add(other_book)
     await session.commit()
 
-    response = client.put(
+    response = await client.put(
         f'{base_url}{other_book.id}',
         json={'name': book_name_existent},
         headers={
@@ -454,15 +455,16 @@ async def test_update_book_deve_falhar_com_erro_de_banco_e_rollback(
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
-    client = TestClient(app=app)
-
-    response = client.put(
-        f'{base_url}{book.id}',
-        json={'title': 'New Title'},
-        headers={
-            'Authorization': f'Bearer {authenticated_token.access_token}'
-        },
-    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as client:
+        response = await client.put(
+            f'{base_url}{book.id}',
+            json={'title': 'New Title'},
+            headers={
+                'Authorization': f'Bearer {authenticated_token.access_token}'
+            },
+        )
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert response.json() == {'detail': 'Database error'}
@@ -484,16 +486,18 @@ async def test_update_book_deve_falhar_integrity_error_generico(
     def mock_get_session():
         yield mock_session
 
+    header_auth = {
+        'Authorization': f'Bearer {authenticated_token.access_token}'
+    }
     app.dependency_overrides[get_session] = mock_get_session
-    client = TestClient(app=app)
-
-    response = client.put(
-        f'{base_url}{book.id}',
-        json={'title': 'New Title'},
-        headers={
-            'Authorization': f'Bearer {authenticated_token.access_token}'
-        },
-    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as client:
+        response = await client.put(
+            f'{base_url}{book.id}',
+            json={'title': 'New Title'},
+            headers=header_auth,
+        )
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert response.json() == {'detail': 'Database error'}
@@ -505,12 +509,12 @@ async def test_update_book_deve_falhar_integrity_error_generico(
 # ============================================================================
 @pytest.mark.asyncio
 async def test_delete_book_deve_ter_sucesso_e_retornar_mensagem(
-    client: TestClient,
+    client: AsyncClient,
     authenticated_token: Token,
     session: AsyncSession,
     book: Book,
 ):
-    response = client.delete(
+    response = await client.delete(
         f'{base_url}{book.id}',
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -522,11 +526,11 @@ async def test_delete_book_deve_ter_sucesso_e_retornar_mensagem(
 
 @pytest.mark.asyncio
 async def test_delete_book_by_id_deve_falhar_e_retornar_exception(
-    client: TestClient,
+    client: AsyncClient,
     authenticated_token: Token,
     book: Book,
 ):
-    response = client.delete(
+    response = await client.delete(
         f'{base_url}{book.id + 999}',
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -539,7 +543,7 @@ async def test_delete_book_by_id_deve_falhar_e_retornar_exception(
 
 @pytest.mark.asyncio
 async def test_delete_book_by_id_deve_falhar_com_rollback(
-    client: TestClient,
+    client: AsyncClient,
     authenticated_token: Token,
     session: AsyncSession,
     book: Book,
@@ -549,7 +553,7 @@ async def test_delete_book_by_id_deve_falhar_com_rollback(
     with patch.object(
         session, 'commit', side_effect=SQLAlchemyError('DB Error')
     ):
-        response = client.delete(
+        response = await client.delete(
             f'{base_url}{original_book_id}',
             headers={
                 'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -572,7 +576,7 @@ async def test_delete_book_by_id_deve_falhar_com_rollback(
 # ============================================================================
 @pytest.mark.asyncio
 async def test_read_books_by_partial_name_deve_retornar_livros_filtrados(
-    client: TestClient,
+    client: AsyncClient,
     novelist_with_books: Callable[
         [int, Optional[str], Optional[str]], Awaitable[Novelist]
     ],
@@ -584,7 +588,7 @@ async def test_read_books_by_partial_name_deve_retornar_livros_filtrados(
     ]
 
     uri = f'{base_url}?' + urlencode({'name': 'Python'})
-    response = client.get(uri)
+    response = await client.get(uri)
 
     assert response.status_code == HTTPStatus.OK
     data = response.json()
@@ -596,7 +600,7 @@ async def test_read_books_by_partial_name_deve_retornar_livros_filtrados(
 
 @pytest.mark.asyncio
 async def test_read_books_by_partial_title_deve_retornar_livros_filtrados(
-    client: TestClient,
+    client: AsyncClient,
     session: AsyncSession,
     novelist_with_books: Callable[
         [int, Optional[str], Optional[str]], Awaitable[Novelist]
@@ -606,7 +610,7 @@ async def test_read_books_by_partial_title_deve_retornar_livros_filtrados(
     await novelist_with_books(5, title_prefix='Beginner')  # type: ignore
 
     uri = f'{base_url}?' + urlencode({'title': 'Advanced'})
-    response = client.get(uri)
+    response = await client.get(uri)
 
     assert response.status_code == HTTPStatus.OK
     data = response.json()
@@ -620,7 +624,7 @@ async def test_read_books_by_partial_title_deve_retornar_livros_filtrados(
 
 @pytest.mark.asyncio
 async def test_read_books_by_year_range_deve_retornar_livros_filtrados(
-    client: TestClient,
+    client: AsyncClient,
     session: AsyncSession,
     novelist: Novelist,
 ):
@@ -637,7 +641,7 @@ async def test_read_books_by_year_range_deve_retornar_livros_filtrados(
 
     # Filtro: yearFrom=2020, yearTo=2022 (exclusive)
     uri = f'{base_url}?' + urlencode({'yearFrom': 2020, 'yearTo': 2022})
-    response = client.get(uri)
+    response = await client.get(uri)
 
     assert response.status_code == HTTPStatus.OK
     data = response.json()
@@ -651,7 +655,7 @@ async def test_read_books_by_year_range_deve_retornar_livros_filtrados(
 
 @pytest.mark.asyncio
 async def test_read_books_com_multiplos_filtros_deve_retornar_correto(
-    client: TestClient,
+    client: AsyncClient,
     session: AsyncSession,
     novelist: Novelist,
 ):
@@ -674,7 +678,7 @@ async def test_read_books_com_multiplos_filtros_deve_retornar_correto(
 
     # Filtro: name='Python' AND yearFrom=2021
     uri = f'{base_url}?' + urlencode({'name': 'Python', 'yearFrom': 2021})
-    response = client.get(uri)
+    response = await client.get(uri)
 
     assert response.status_code == HTTPStatus.OK
     data = response.json()
@@ -686,14 +690,14 @@ async def test_read_books_com_multiplos_filtros_deve_retornar_correto(
 
 @pytest.mark.asyncio
 async def test_read_books_sem_filtros_deve_retornar_todos(
-    client: TestClient,
+    client: AsyncClient,
     novelist_with_books: Callable[
         [int, Optional[str], Optional[str]], Awaitable[Novelist]
     ],
 ):
     await novelist_with_books(15, None, None)
 
-    response = client.get(base_url)
+    response = await client.get(base_url)
 
     assert response.status_code == HTTPStatus.OK
     data = response.json()
@@ -706,7 +710,7 @@ async def test_read_books_sem_filtros_deve_retornar_todos(
 
 @pytest.mark.asyncio
 async def test_read_books_filtro_sem_resultado_deve_retornar_lista_vazia(
-    client: TestClient,
+    client: AsyncClient,
     session: AsyncSession,
     novelist_with_books: Callable[
         [int, Optional[str], Optional[str]], Awaitable[Novelist]
@@ -715,7 +719,7 @@ async def test_read_books_filtro_sem_resultado_deve_retornar_lista_vazia(
     await novelist_with_books(5, name_prefix='Python')  # type: ignore
 
     uri = f'{base_url}?' + urlencode({'name': 'NonExistent'})
-    response = client.get(uri)
+    response = await client.get(uri)
 
     assert response.status_code == HTTPStatus.OK
     data = response.json()
@@ -728,7 +732,7 @@ async def test_read_books_filtro_sem_resultado_deve_retornar_lista_vazia(
 
 @pytest.mark.asyncio
 async def test_read_books_paginacao_deve_funcionar_corretamente(
-    client: TestClient,
+    client: AsyncClient,
     session: AsyncSession,
     novelist_with_books: Callable[
         [int, Optional[str], Optional[str]], Awaitable[Novelist]
@@ -738,7 +742,7 @@ async def test_read_books_paginacao_deve_funcionar_corretamente(
 
     # Página 1
     uri1 = f'{base_url}?' + urlencode({'page': 1, 'limit': 10})
-    response1 = client.get(uri1)
+    response1 = await client.get(uri1)
     data1 = response1.json()
 
     assert data1['total'] == 25  # noqa: PLR2004
@@ -748,7 +752,7 @@ async def test_read_books_paginacao_deve_funcionar_corretamente(
 
     # Página 2
     uri2 = f'{base_url}?' + urlencode({'page': 2, 'limit': 10})
-    response2 = client.get(uri2)
+    response2 = await client.get(uri2)
     data2 = response2.json()
 
     assert len(data2['data']) == 10  # noqa: PLR2004
@@ -757,7 +761,7 @@ async def test_read_books_paginacao_deve_funcionar_corretamente(
 
     # Página 3 (última)
     uri3 = f'{base_url}?' + urlencode({'page': 3, 'limit': 10})
-    response3 = client.get(uri3)
+    response3 = await client.get(uri3)
     data3 = response3.json()
 
     assert len(data3['data']) == 5  # noqa: PLR2004
@@ -767,11 +771,11 @@ async def test_read_books_paginacao_deve_funcionar_corretamente(
 
 @pytest.mark.asyncio
 async def test_read_book_by_id_deve_ter_sucesso_e_retornar_book(
-    client: TestClient,
+    client: AsyncClient,
     session: AsyncSession,
     book: Book,
 ):
-    response = client.get(f'{base_url}{book.id}')
+    response = await client.get(f'{base_url}{book.id}')
     assert response.status_code == HTTPStatus.OK
     _book_schema = BookPublic.model_validate(book)
     assert response.json() == _book_schema.model_dump()
@@ -779,10 +783,10 @@ async def test_read_book_by_id_deve_ter_sucesso_e_retornar_book(
 
 @pytest.mark.asyncio
 async def test_read_book_by_id_deve_falhar_e_retornar_exception(
-    client: TestClient,
+    client: AsyncClient,
     book: Book,
 ):
-    response = client.get(f'{base_url}{book.id + 999}')
+    response = await client.get(f'{base_url}{book.id + 999}')
     assert response.status_code == HTTPStatus.NOT_FOUND
 
     assert response.json() == {'detail': 'Book not found'}
@@ -801,7 +805,7 @@ async def test_read_books_ordenacao_parametrizada(client, novelist_with_books):
                 'orderDir': order_dir,
                 'limit': 5,
             })
-            response = client.get(f'/books/?{params}')
+            response = await client.get(f'/books/?{params}')
 
             assert response.status_code == HTTPStatus.OK
             data = response.json()

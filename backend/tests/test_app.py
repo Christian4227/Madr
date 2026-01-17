@@ -1,9 +1,11 @@
 from http import HTTPStatus
 
-from fastapi.testclient import TestClient
+import pytest
+from httpx import AsyncClient
 
 
-def test_root_deve_retornar_ok(client: TestClient):
-    response = client.get('/')
+@pytest.mark.asyncio
+async def test_root_deve_retornar_ok(client: AsyncClient):
+    response = await client.get('/')
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {'message': 'ok'}

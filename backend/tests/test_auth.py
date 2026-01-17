@@ -4,9 +4,9 @@ from unittest.mock import patch
 
 import jwt
 import pytest
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from madr.core.security import generate_token
 from madr.models.user import User
@@ -15,14 +15,15 @@ from tests.utils import frozen_context
 base_url_api = '/auth/token'
 
 
-def test_users_deve_retornar_token_de_usuario_autenticado(
-    client: TestClient, user: User
+@pytest.mark.asyncio
+async def test_users_deve_retornar_token_de_usuario_autenticado(
+    client: AsyncClient, user: User
 ):
     payload = {
         'username': user.email,
         'password': '123456789',
     }
-    response = client.post(base_url_api, data=payload)
+    response = await client.post(base_url_api, data=payload)
     data = response.json()
     assert 'access_token' in data
     assert 'token_type' in data
@@ -30,25 +31,45 @@ def test_users_deve_retornar_token_de_usuario_autenticado(
     assert data['token_type'] == 'bearer'
 
 
-def test_login_user_deve_falhar_senha_errada(client: TestClient, user: User):
+# @pytest.mark.asyncio
+# async def test_users_deve_retornar_token_de_usuario_autenticado(
+#     client: AsyncClient, user: User
+# ):
+#     payload = {
+#         'username': user.email,
+#         'password': '123456789',
+#     }
+#     response = await client.post(base_url_api, data=payload)
+#     data = response.json()
+#     assert 'access_token' in data
+#     assert 'token_type' in data
+#     assert data['access_token'].startswith('ey')
+#     assert data['token_type'] == 'bearer'
+
+
+@pytest.mark.asyncio
+async def test_login_user_deve_falhar_senha_errada(
+    client: AsyncClient, user: User
+):
     payload = {
         'username': user.email,
         'password': 'wrong_password_',
     }
-    response = client.post(base_url_api, data=payload)
+    response = await client.post(base_url_api, data=payload)
     assert response.status_code == HTTPStatus.UNAUTHORIZED
     data = response.json()
     assert data == {'detail': 'Incorrect username or password'}
 
 
-def test_login_user_deve_falhar_user_nao_existe(
-    client: TestClient, user: User
+@pytest.mark.asyncio
+async def test_login_user_deve_falhar_user_nao_existe(
+    client: AsyncClient, user: User
 ):
     payload = {
         'username': 'wrong_username_123',
         'password': '123456789',
     }
-    response = client.post(base_url_api, data=payload)
+    response = await client.post(base_url_api, data=payload)
     assert response.status_code == HTTPStatus.UNAUTHORIZED
     data = response.json()
     assert data == {'detail': 'Incorrect username or password'}
@@ -56,7 +77,7 @@ def test_login_user_deve_falhar_user_nao_existe(
 
 # @pytest.mark.asyncio
 # async def test_login_atualiza_hash_quando_necessario(
-#     client: TestClient, session: Session, user: User
+#     client: AsyncClient, session: AsyncSession, user: User
 # ):
 #     password_plain = '123456789'
 
@@ -71,7 +92,7 @@ def test_login_user_deve_falhar_user_nao_existe(
 #             authenticated=True, user=user, needs_rehash=True
 #         )
 
-#         response = client.post(
+#         response = await client.post(
 #             base_url_api,
 #             data={'username': user.username, 'password': password_plain},
 #         )
@@ -84,7 +105,7 @@ def test_login_user_deve_falhar_user_nao_existe(
 #         assert user.password != old_hash
 @pytest.mark.asyncio
 async def test_login_atualiza_hash_quando_necessario(
-    client: TestClient, session: Session, user: User
+    client: AsyncClient, session: AsyncSession, user: User
 ):
     password_plain = '123456789'
 
@@ -97,7 +118,7 @@ async def test_login_atualiza_hash_quando_necessario(
     old_hash = user.password
     user_id = user.id
 
-    response = client.post(
+    response = await client.post(
         base_url_api,
         data={'username': user.username, 'password': password_plain},
     )
@@ -114,7 +135,7 @@ async def test_login_atualiza_hash_quando_necessario(
 
 @pytest.mark.asyncio
 async def test_login_nao_atualiza_hash_quando_desnecessario(
-    client: TestClient, session: Session, user: User
+    client: AsyncClient, session: AsyncSession, user: User
 ):
     password_plain = '123456789'
 
@@ -128,7 +149,7 @@ async def test_login_nao_atualiza_hash_quando_desnecessario(
             authenticated=True, user=user, needs_rehash=False
         )
 
-        response = client.post(
+        response = await client.post(
             base_url_api,
             data={'username': user.username, 'password': password_plain},
         )
@@ -138,7 +159,8 @@ async def test_login_nao_atualiza_hash_quando_desnecessario(
         assert user.password == old_hash
 
 
-def test_generate_token_sem_exp_time_delta(user: User):
+@pytest.mark.asyncio
+async def test_generate_token_sem_exp_time_delta(user: User):
     data = {'sub': user.id, 'username': user.username, 'email': user.email}
     from madr.config import Settings  # noqa: PLC0415
 
@@ -156,7 +178,8 @@ def test_generate_token_sem_exp_time_delta(user: User):
     assert timedelta(minutes=14) < (exp - now) < timedelta(minutes=16)
 
 
-def test_generate_token_com_exp_time_delta(user: User):
+@pytest.mark.asyncio
+async def test_generate_token_com_exp_time_delta(user: User):
     data = {'sub': user.id, 'username': user.username, 'email': user.email}
     from madr.config import Settings  # noqa: PLC0415
 

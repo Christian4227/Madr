@@ -4,8 +4,9 @@ from typing import List
 import factory
 import pytest
 import pytest_asyncio
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import NullPool
 from testcontainers.postgres import PostgresContainer
 
 from madr.app import app
@@ -20,27 +21,51 @@ from madr.schemas.security import Token
 from madr.schemas.user import UserCreate
 from tests.factories import BookFactory, NovelistFactory, UserFactory
 
+# @pytest.fixture(scope='session')
+# def engine():
+#     with PostgresContainer('postgres:17', driver='asyncpg') as postgres:
+# _engine = create_async_engine(postgres.get_connection_url())
+# yield _engine
+
 
 @pytest.fixture(scope='session')
 def engine():
-    with PostgresContainer('postgres:17', driver='psycopg') as postgres:
-        _engine = create_async_engine(postgres.get_connection_url())
+    with PostgresContainer('postgres:17', driver='asyncpg') as postgres:
+        _engine = create_async_engine(
+            postgres.get_connection_url(),
+            poolclass=NullPool,  # adicione isso
+        )
         yield _engine
+
+
+# @pytest_asyncio.fixture
+# async def client(session: AsyncSession, user: User):
+
+#     async def override_get_db():
+#         yield session
+
+#     async def override_get_current_user():
+#         return user
+
+#     app.dependency_overrides[get_session] = override_get_db
+#     # app.dependency_overrides[get_current_user] = override_get_current_user
+
+#     yield TestClient(app)
+
+#     app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
 async def client(session: AsyncSession, user: User):
-
     async def override_get_db():
         yield session
 
-    async def override_get_current_user():
-        return user
-
     app.dependency_overrides[get_session] = override_get_db
-    # app.dependency_overrides[get_current_user] = override_get_current_user
 
-    yield TestClient(app)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as ac:
+        yield ac
 
     app.dependency_overrides.clear()
 

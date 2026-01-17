@@ -1,4 +1,3 @@
-
 import secrets
 from datetime import timedelta
 from http import HTTPStatus
@@ -6,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,14 +23,15 @@ base_url = '/users/'
 
 @pytest.mark.asyncio
 async def test_users_deve_retornar_usuario_criado_com_id(
-    session: AsyncSession, client: TestClient
+    session: AsyncSession,
+    client: AsyncClient,
 ):
     payload = {
         'username': 'pedrinho',
         'email': 'pedrinho@gmail.com.br',
         'password': 'batatinhas',
     }
-    response = client.post(
+    response = await client.post(
         base_url,
         json=payload,
     )
@@ -47,13 +47,13 @@ async def test_users_deve_retornar_usuario_criado_com_id(
 
 @pytest.mark.asyncio
 async def test_users_deve_retornar_excessao_conflito_409(
-    client: TestClient, user: User
+    client: AsyncClient, user: User
 ):
     user_schema = UserCreate.model_validate(user, from_attributes=True)
 
     payload = user_schema.model_dump()
     payload['password'] = '123456789'
-    response = client.post(
+    response = await client.post(
         base_url,
         json=payload,
     )
@@ -65,9 +65,9 @@ async def test_users_deve_retornar_excessao_conflito_409(
 
 @pytest.mark.asyncio
 async def test_delete_user_deve_retornar_success_delecao(
-    client: TestClient, authenticated_token: Token
+    client: AsyncClient, authenticated_token: Token
 ):
-    response = client.delete(
+    response = await client.delete(
         base_url,
         headers={
             'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -80,7 +80,7 @@ async def test_delete_user_deve_retornar_success_delecao(
 
 @pytest.mark.asyncio
 async def test_update_user_deve_retornar_user_modificado(
-    client: TestClient, user: User, authenticated_token: Token
+    client: AsyncClient, user: User, authenticated_token: Token
 ):
     username = user.username
     modified_username = f'modified_{username}'
@@ -89,7 +89,7 @@ async def test_update_user_deve_retornar_user_modificado(
         'username': modified_username,
     }
 
-    response = client.put(
+    response = await client.put(
         base_url,
         json=payload,
         headers={
@@ -103,7 +103,7 @@ async def test_update_user_deve_retornar_user_modificado(
 
 @pytest.mark.asyncio
 async def test_update_user_nao_deve_atualizar_password(
-    client: TestClient,
+    client: AsyncClient,
     user: User,
     authenticated_token: Token,
     session: AsyncSession,
@@ -115,7 +115,7 @@ async def test_update_user_nao_deve_atualizar_password(
         'pasword': new_pwd,
     }
 
-    response = client.put(
+    response = await client.put(
         base_url,
         json=payload,
         headers={
@@ -144,9 +144,10 @@ async def test_create_user_nao_grava_no_db_em_caso_de_erro(
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
-
-    client = TestClient(app=app)
-    response = client.post(base_url, json=user_payload)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as client:
+        response = await client.post(base_url, json=user_payload)
 
     assert response.status_code == HTTPStatus.CONFLICT
     assert response.json() == {'detail': 'User already exists'}
@@ -174,8 +175,10 @@ async def test_create_user_deve_falhar_com_rollback(user_payload: dict):
 
     app.dependency_overrides[get_session] = mock_get_session
 
-    client = TestClient(app=app)
-    response = client.post(base_url, json=user_payload)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as client:
+        response = await client.post(base_url, json=user_payload)
 
     assert response.status_code == HTTPStatus.CONFLICT
     assert response.json() == {'detail': 'User already exists'}
@@ -211,14 +214,14 @@ async def test_create_user_deve_falhar_com_rollback_conflict(
 )
 @pytest.mark.asyncio
 async def test_create_user_deve_falhar_sem_campos_obrigatorios(
-    client: TestClient,
+    client: AsyncClient,
     field_missing: str,
     session: AsyncSession,
     user_payload: dict,
 ):
     del user_payload[field_missing]
 
-    response = client.post(
+    response = await client.post(
         base_url,
         json=user_payload,
     )
@@ -236,6 +239,9 @@ async def test_update_user_rollback_on_commit_error(
     authenticated_token: Token,
 ):
     del user_payload['password']
+    auth_header = {
+        'Authorization': f'Bearer {authenticated_token.access_token}'
+    }
 
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.commit.side_effect = SQLAlchemyError('DB error')
@@ -244,15 +250,12 @@ async def test_update_user_rollback_on_commit_error(
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
-    client = TestClient(app=app)
-
-    response = client.put(
-        base_url,
-        json=user_payload,
-        headers={
-            'Authorization': f'Bearer {authenticated_token.access_token}'
-        },
-    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as client:
+        response = await client.put(
+            base_url, json=user_payload, headers=auth_header
+        )
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     mock_session.rollback.assert_called_once()
@@ -262,8 +265,11 @@ async def test_update_user_rollback_on_commit_error(
 
 @pytest.mark.asyncio
 async def test_delete_user_deve_falhar_com_rollback(
-    session: AsyncSession, client: TestClient, authenticated_token: Token
+    session: AsyncSession, authenticated_token: Token
 ):
+    auth_header = {
+        'Authorization': f'Bearer {authenticated_token.access_token}'
+    }
     mock_session = AsyncMock(spec=AsyncSession)
 
     mock_session.commit.side_effect = SQLAlchemyError('DB Error')
@@ -274,14 +280,10 @@ async def test_delete_user_deve_falhar_com_rollback(
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
-    client = TestClient(app=app)
-
-    response = client.delete(
-        base_url,
-        headers={
-            'Authorization': f'Bearer {authenticated_token.access_token}'
-        },
-    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as client:
+        response = await client.delete(base_url, headers=auth_header)
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert response.json() == {
@@ -294,10 +296,10 @@ async def test_delete_user_deve_falhar_com_rollback(
 
 @pytest.mark.asyncio
 async def test_delete_user_deve_falhar_token_expirado(
-    session: AsyncSession, client: TestClient, authenticated_token: Token
+    session: AsyncSession, client: AsyncClient, authenticated_token: Token
 ):
     with frozen_context(timedelta(minutes=31)):
-        response = client.delete(
+        response = await client.delete(
             base_url,
             headers={
                 'Authorization': f'Bearer {authenticated_token.access_token}'
@@ -313,7 +315,7 @@ async def test_delete_user_deve_falhar_token_expirado(
 @pytest.mark.asyncio
 async def test_update_user_deve_falhar_token_expirado(
     session: AsyncSession,
-    client: TestClient,
+    client: AsyncClient,
     user: User,
     authenticated_token: Token,
 ):
@@ -325,7 +327,7 @@ async def test_update_user_deve_falhar_token_expirado(
         'username': modified_username,
     }
     with frozen_context(timedelta(minutes=31)):
-        response = client.put(
+        response = await client.put(
             base_url,
             json=payload,
             headers={
@@ -353,9 +355,10 @@ async def test_create_user_conflict_unique_violation(user_payload: dict):
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
-
-    client = TestClient(app=app)
-    response = client.post(base_url, json=user_payload)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as client:
+        response = await client.post(base_url, json=user_payload)
 
     assert response.status_code == HTTPStatus.CONFLICT
     assert response.json() == {'detail': 'User already exists'}
@@ -382,8 +385,10 @@ async def test_create_user_database_error_generic(
 
     app.dependency_overrides[get_session] = mock_get_session
 
-    client = TestClient(app=app)
-    response = client.post(base_url, json=user_payload)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url='http://test'
+    ) as client:
+        response = await client.post(base_url, json=user_payload)
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert response.json() == {'detail': 'Database error'}
