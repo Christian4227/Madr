@@ -8,8 +8,6 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./backend/.env
-    environment:
-      DATABASE_URL: "postgresql+psycopg://admin_madr:pwd_madr_db123@db:5432/madr_db"
 
     ports:
       - "8002:8000"
