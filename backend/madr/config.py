@@ -1,16 +1,12 @@
-from pathlib import Path
-
+from typing import List
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=BASE_DIR / '.env', env_file_encoding='utf-8'
+        env_file='.env', env_file_encoding='utf-8'
     )
-
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
     POSTGRES_DB: str
@@ -24,5 +20,12 @@ class Settings(BaseSettings):
     @classmethod
     def parse_cors(cls, v):
         if isinstance(v, str):
-            return [x.strip() for x in v.split(',')]
+            # Tenta JSON primeiro
+            try:
+                import json  # noqa: PLC0415
+
+                return json.loads(v)
+            except Exception:
+                # Se falhar, assume vírgula
+                return [x.strip() for x in v.split(',')]
         return v
