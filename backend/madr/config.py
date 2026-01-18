@@ -1,5 +1,4 @@
-from typing import List
-from pydantic import field_validator
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,11 +17,10 @@ class Settings(BaseSettings):
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
 
-    CORS_ORIGINS: str  # ← trocar de list[str] para str
+    CORS_ORIGINS: str
 
     @property
     def cors_origins_list(self) -> list[str]:
-        """Parse CORS_ORIGINS to list"""
         if self.CORS_ORIGINS.startswith('['):
             import json  # noqa: PLC0415
 
