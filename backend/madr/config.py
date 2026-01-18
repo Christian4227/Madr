@@ -20,12 +20,10 @@ class Settings(BaseSettings):
     @classmethod
     def parse_cors(cls, v):
         if isinstance(v, str):
-            # Tenta JSON primeiro
             try:
                 import json  # noqa: PLC0415
 
                 return json.loads(v)
             except Exception:
-                # Se falhar, assume vírgula
                 return [x.strip() for x in v.split(',')]
         return v
