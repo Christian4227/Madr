@@ -1,11 +1,10 @@
-
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file='.env', env_file_encoding='utf-8'
+        env_file='.env', env_file_encoding='utf-8', env_ignore_empty=True
     )
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
@@ -19,11 +18,13 @@ class Settings(BaseSettings):
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
     def parse_cors(cls, v):
+        if isinstance(v, list):
+            return v
         if isinstance(v, str):
-            try:
+            v = v.strip()
+            if v.startswith('['):
                 import json  # noqa: PLC0415
 
                 return json.loads(v)
-            except Exception:
-                return [x.strip() for x in v.split(',')]
-        return v
+            return [x.strip() for x in v.split(',') if x.strip()]
+        return []
