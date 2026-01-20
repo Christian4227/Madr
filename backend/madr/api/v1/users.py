@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from madr.api.utils import is_unique_violation
 from madr.core.security import get_hash
-from madr.dependecies import active_user, db_session
+from madr.dependencies import ActiveUser
 from madr.models.user import User
 from madr.schemas import Message
 from madr.schemas.user import (
@@ -15,12 +15,13 @@ from madr.schemas.user import (
     UserPublic,
     UserUpdate,
 )
+from madr.types import DBSession
 
 router = APIRouter(prefix='/users', tags=['users'])
 
 
 @router.post('/', status_code=HTTPStatus.CREATED, response_model=UserPublic)
-async def create_user(user: UserCreate, session: db_session):
+async def create_user(user: UserCreate, session: DBSession):
     db_user = User(**user.model_dump(exclude_unset=True))
     db_user.password = get_hash(db_user.password)
     try:
@@ -44,7 +45,7 @@ async def create_user(user: UserCreate, session: db_session):
 
 @router.put('/', status_code=HTTPStatus.OK, response_model=UserPublic)
 async def update_user(
-    active_user: active_user, user: UserUpdate, session: db_session
+    active_user: ActiveUser, user: UserUpdate, session: DBSession
 ):
 
     update_data = user.model_dump(
@@ -70,7 +71,7 @@ async def update_user(
     response_model=UserList,
 )
 async def read_users(
-    session: db_session,
+    session: DBSession,
     skip: int = 0,
     limit: int = 10,
 ):  # pragma: no cover
@@ -83,8 +84,8 @@ async def read_users(
 
 @router.delete('/', status_code=HTTPStatus.OK, response_model=Message)
 async def remove_user(
-    active_user: active_user,
-    session: db_session,
+    active_user: ActiveUser,
+    session: DBSession,
 ):
     await session.execute(delete(User).where(User.id == active_user.id))
     try:

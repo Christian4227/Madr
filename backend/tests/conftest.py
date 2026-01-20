@@ -1,5 +1,6 @@
 from datetime import timedelta
 from typing import List
+from uuid import uuid4
 
 import factory
 import pytest
@@ -179,8 +180,16 @@ async def novelist_with_books(session: AsyncSession):
 async def authenticated_token(user: User):
     token_delta_expire_time = timedelta(minutes=5)
 
-    data = {'sub': user.id, 'username': user.username, 'email': user.email}
-
+    version = '0'
+    # version = await get_user_token_version(redis_client, user_id)
+    jti = uuid4()
+    data = {
+        'sub': user.id,
+        'username': user.username,
+        'email': user.email,
+        'jti': str(jti),
+        'ver': int(version),
+    }
     access_token = generate_token(data, token_delta_expire_time)
 
     return Token(access_token=access_token, token_type='bearer')
@@ -222,7 +231,6 @@ async def book_payload(novelist: Novelist) -> dict:
 async def user_payload() -> dict:
     _user = UserFactory()
     user_validated = UserCreate.model_validate(_user, from_attributes=True)
-
     return user_validated.model_dump(by_alias=True)
 
 

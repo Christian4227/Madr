@@ -19,11 +19,14 @@ base_url_api = '/auth/token'
 async def test_users_deve_retornar_token_de_usuario_autenticado(
     client: AsyncClient, user: User
 ):
-    payload = {
-        'username': user.email,
-        'password': '123456789',
-    }
-    response = await client.post(base_url_api, data=payload)
+    response = await client.post(
+        base_url_api,
+        data={
+            'username': user.email,
+            'password': '123456789',
+        },
+        headers={'Content-Type': 'application/x-www-form-urlencoded'},
+    )
     data = response.json()
     assert 'access_token' in data
     assert 'token_type' in data
@@ -111,6 +114,7 @@ async def test_login_atualiza_hash_quando_necessario(
 
     from argon2 import PasswordHasher  # noqa: PLC0415
 
+    # cria um hasher sabidamente defasado
     ph = PasswordHasher(time_cost=1, memory_cost=8192, parallelism=1)
     user.password = ph.hash(password_plain)
     await session.commit()

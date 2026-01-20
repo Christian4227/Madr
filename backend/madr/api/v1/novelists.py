@@ -5,22 +5,16 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from madr.api.utils import is_unique_violation
-from madr.dependecies import (
+from madr.dependencies import (
+    ActiveUser,
     AnnotatedBookQueryParams,
     AnnotatedNovelistQueryParams,
-    active_user,
-    db_session,
 )
 from madr.models.book import Book
 from madr.models.novelist import Novelist
 from madr.schemas import Message
-from madr.schemas.books import (
-    ORDERABLE_FIELDS as BOOK_ORDERABLE_FIELDS,
-)
-from madr.schemas.books import (
-    BookPublic,
-    PublicBooksPaginated,
-)
+from madr.schemas.books import ORDERABLE_FIELDS as BOOK_ORDERABLE_FIELDS
+from madr.schemas.books import BookPublic, PublicBooksPaginated
 from madr.schemas.novelists import (
     ORDERABLE_FIELDS as NOVELIST_ORDERABLE_FIELDS,
 )
@@ -30,6 +24,7 @@ from madr.schemas.novelists import (
     NovelistUpdate,
     PublicNovelistsPaginated,
 )
+from madr.types import DBSession
 
 router = APIRouter(prefix='/novelists', tags=['novelists'])
 
@@ -38,7 +33,7 @@ router = APIRouter(prefix='/novelists', tags=['novelists'])
     '/', status_code=HTTPStatus.OK, response_model=PublicNovelistsPaginated
 )
 async def read_novelists_by(
-    session: db_session, query: AnnotatedNovelistQueryParams
+    session: DBSession, query: AnnotatedNovelistQueryParams
 ):
     offset = query.offset
     order_by = query.order_by
@@ -85,9 +80,9 @@ async def read_novelists_by(
     '/', status_code=HTTPStatus.CREATED, response_model=NovelistPublic
 )
 async def create_novelist(
-    _: active_user,
+    _: ActiveUser,
     novelist: NovelistSchema,
-    session: db_session,
+    session: DBSession,
 ):
     db_novelist = Novelist(**novelist.model_dump())
 
@@ -120,10 +115,10 @@ async def create_novelist(
     '/{novelist_id}', status_code=HTTPStatus.OK, response_model=NovelistPublic
 )
 async def update_novelist(
-    _: active_user,
+    _: ActiveUser,
     novelist_id: int,
     novelist: NovelistUpdate,
-    session: db_session,
+    session: DBSession,
 ):
     existing_novelist = await session.scalar(
         select(Novelist).where(Novelist.id == novelist_id)
@@ -155,9 +150,9 @@ async def update_novelist(
     '/{novelist_id}', status_code=HTTPStatus.OK, response_model=Message
 )
 async def remove_novelist(
-    _: active_user,
+    _: ActiveUser,
     novelist_id: int,
-    session: db_session,
+    session: DBSession,
 ):
 
     existing_novelist = await session.scalar(
@@ -181,7 +176,7 @@ async def remove_novelist(
     response_model=PublicBooksPaginated,
 )
 async def get_books_by_novelist(
-    novelist_id: int, query: AnnotatedBookQueryParams, session: db_session
+    novelist_id: int, query: AnnotatedBookQueryParams, session: DBSession
 ):
     offset = query.offset
 

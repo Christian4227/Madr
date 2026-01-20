@@ -41,6 +41,7 @@ async def test_create_book_deve_ter_exito_e_retornar_book_com_id(
             'Authorization': f'Bearer {authenticated_token.access_token}'
         },
     )
+    # ipdb.set_trace()
     assert response.status_code == HTTPStatus.CREATED
 
 

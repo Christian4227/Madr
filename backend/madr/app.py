@@ -6,17 +6,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from madr.api.v1.router import routers
 from madr.config import Settings
+from madr.core.redis import lifespan as redis_lifespan
 from madr.schemas import Message
+
+settings = Settings()  # type: ignore
+
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-app = FastAPI()
-settings = Settings()  # type: ignore
+
+app = FastAPI(lifespan=redis_lifespan)
 
 
 @app.get('/', response_model=Message)
-def health():
+async def health():
     return {'message': 'ok'}
 
 

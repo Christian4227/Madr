@@ -16,14 +16,13 @@ from madr.models.user import User
 
 password_hash = PasswordHash.recommended()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/auth/token')
-
 settings = Settings()  # type: ignore
 
 
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> User:  # noqa: F821
+) -> User:
     credentials_exception = HTTPException(
         status_code=HTTPStatus.UNAUTHORIZED,
         detail='Could not validate credentials',
@@ -39,6 +38,7 @@ async def get_current_user(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
         int_identifier = int(payload.get('sub'))
+        # token_version = int(payload.get('ver', 0))
     except jwt.ExpiredSignatureError:
         raise credentials_expired
     except (
@@ -52,13 +52,18 @@ async def get_current_user(
     user = await session.scalar(select(User).where(User.id == int_identifier))
     if user is None:
         raise credentials_exception
+
+    # current_version_token = await redis_client.get(
+    #     f'user:token_version:{user.id}'
+    # )
+    # if current_version_token != token_version:
+    #     raise credentials_exception
     return user
 
 
 def verify_password(
     plain_password: str, hashed_password: str
 ) -> tuple[bool, bool]:
-    """Retorna (is_valid, needs_rehash)"""
     is_valid, new_hash = password_hash.verify_and_update(
         plain_password, hashed_password
     )
@@ -67,9 +72,7 @@ def verify_password(
 
 
 def get_hash(plain_text: str) -> str:
-    return password_hash.hash(
-        plain_text,
-    )
+    return password_hash.hash(plain_text)
 
 
 def generate_token(data: dict, exp_time_delta: Optional[timedelta] = None):
@@ -98,11 +101,10 @@ async def authenticate_user(
     session: AsyncSession, identity: str, password: str
 ) -> AuthResult:
     auth_result = AuthResult(False, None, False)
-    user_db = await session.scalar(
-        select(User).where(
-            (User.username == identity) | (User.email == identity)
-        )
+    stmt = select(User).where(
+        (User.username == identity) | (User.email == identity)
     )
+    user_db = await session.scalar(stmt)
     if not user_db:
         return auth_result
 

@@ -1,4 +1,4 @@
-from http import HTTPStatus  # noqa: I001
+from http import HTTPStatus
 
 from fastapi import APIRouter
 from fastapi.exceptions import HTTPException
@@ -6,16 +6,19 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from madr.api.utils import is_fk_violation, is_unique_violation
-from madr.dependecies import AnnotatedBookQueryParams, active_user, db_session
+from madr.dependencies import ActiveUser, AnnotatedBookQueryParams
 from madr.models.book import Book
 from madr.schemas import Message
 from madr.schemas.books import (
     ORDERABLE_FIELDS as BOOK_ORDERABLE_FIELDS,
+)
+from madr.schemas.books import (
     BookCreate,
     BookPublic,
     BookUpdate,
     PublicBooksPaginated,
 )
+from madr.types import DBSession
 
 router = APIRouter(prefix='/books', tags=['books'])
 
@@ -24,7 +27,7 @@ router = APIRouter(prefix='/books', tags=['books'])
     '/', status_code=HTTPStatus.OK, response_model=PublicBooksPaginated
 )
 async def read_books_by_filter(
-    session: db_session, query: AnnotatedBookQueryParams
+    session: DBSession, query: AnnotatedBookQueryParams
 ):
     order_dir = query.order_dir
     year_from = query.year_from
@@ -70,17 +73,19 @@ async def read_books_by_filter(
 
 @router.post('/', status_code=HTTPStatus.CREATED, response_model=BookPublic)
 async def create_book(
-    _: active_user,
+    _: ActiveUser,
     input_book: BookCreate,
-    session: db_session,
+    session: DBSession,
 ):
     db_book = Book(**input_book.model_dump(exclude_unset=True))
 
     try:
+        # ipdb.set_trace()
         session.add(db_book)
         await session.commit()
         await session.refresh(db_book)
     except IntegrityError as err:
+        # ipdb.set_trace()
         await session.rollback()
 
         if is_fk_violation(err):
@@ -88,7 +93,7 @@ async def create_book(
                 status_code=HTTPStatus.NOT_FOUND,
                 detail='Novelist not found',
             )
-
+        # ipdb.set_trace()
         if is_unique_violation(err):
             raise HTTPException(
                 status_code=HTTPStatus.CONFLICT,
@@ -100,6 +105,7 @@ async def create_book(
             detail='Integrity violation',
         )
     except SQLAlchemyError:
+        # ipdb.set_trace()
         await session.rollback()
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -111,16 +117,16 @@ async def create_book(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail='Internal error',
         )
-
+    # ipdb.set_trace()
     return db_book
 
 
 @router.put('/{book_id}', status_code=HTTPStatus.OK, response_model=BookPublic)
 async def update_book(
-    _: active_user,
+    _: ActiveUser,
     book_id: int,
     input_book: BookUpdate,
-    session: db_session,
+    session: DBSession,
 ):
     existing_book = await session.scalar(
         select(Book).where(Book.id == book_id)
@@ -170,7 +176,7 @@ async def update_book(
 @router.get('/{book_id}', status_code=HTTPStatus.OK, response_model=BookPublic)
 async def get_book(
     book_id: int,
-    session: db_session,
+    session: DBSession,
 ):
     existing_book = await session.scalar(
         select(Book).where(Book.id == book_id)
@@ -186,9 +192,9 @@ async def get_book(
 
 @router.delete('/{book_id}', status_code=HTTPStatus.OK, response_model=Message)
 async def delete_book(
-    _: active_user,
+    _: ActiveUser,
     book_id: int,
-    session: db_session,
+    session: DBSession,
 ):
     try:
         result = await session.execute(delete(Book).where(Book.id == book_id))

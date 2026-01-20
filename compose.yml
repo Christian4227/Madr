@@ -1,36 +1,4 @@
 services:
-  api:
-    depends_on:
-      db:
-        condition: service_healthy
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    env_file:
-      - ./backend/.env
-
-    ports:
-      - "8002:8000"
-    healthcheck:
-      test: [ "CMD-SHELL", "python -c 'import socket;s=socket.socket();s.connect((\"localhost\",8000));s.close()'" ]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 15s
-
-  front:
-    depends_on:
-      api:
-        condition: service_healthy
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3002:3000"
-
-    environment:
-      NEXT_PUBLIC_API_URL: http://api:8000
-
   db:
     image: postgres:17
     restart: always
@@ -45,6 +13,47 @@ services:
       - "5430:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: alembic upgrade head
+    env_file:
+      - ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8002:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "python -c \"import socket;s=socket.socket();s.connect(('localhost',8000));s.close()\"" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  front:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
 
   adminer:
     image: adminer

@@ -22,7 +22,9 @@ async def test_create_user(session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_create_user_defalhar_por_password_curto(session: AsyncSession):
+async def test_create_user_deve_falhar_por_password_curto(
+    session: AsyncSession,
+):
     new_user = User(username='alice', password='short', email='teste@test')
     session.add(new_user)
 
@@ -31,7 +33,7 @@ async def test_create_user_defalhar_por_password_curto(session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_create_user_defalhar_por_name_curta(session: AsyncSession):
+async def test_create_user_deve_falhar_por_name_curta(session: AsyncSession):
     new_user = User(username='', password='short12345', email='teste@test')
     session.add(new_user)
 
@@ -40,7 +42,7 @@ async def test_create_user_defalhar_por_name_curta(session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_create_user_defalhar_por_email_curto(session: AsyncSession):
+async def test_create_user_deve_falhar_por_email_curto(session: AsyncSession):
     new_user = User(username='alice_silva', password='short12345', email='t@')
     session.add(new_user)
 
@@ -49,7 +51,7 @@ async def test_create_user_defalhar_por_email_curto(session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_create_user_defalhar_por_email_sem_formato(
+async def test_create_user_deve_falhar_por_email_sem_formato(
     session: AsyncSession,
 ):
     new_user = User(
