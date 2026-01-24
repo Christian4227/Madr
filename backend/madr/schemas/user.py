@@ -1,7 +1,10 @@
+# schemas/user.py
+
 from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr
 
+from madr.models.user import User
 from madr.schemas.mixins import DateSchema
 
 
@@ -29,3 +32,10 @@ class UserDB(UserPublic, DateSchema):
 
 class UserList(BaseModel):
     users: List[UserPublic]
+
+
+class AuthContext(BaseModel):
+    current_user: User
+    jti: str
+    exp: int
+    ver: int

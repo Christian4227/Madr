@@ -9,9 +9,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
 
 from madr.app import app
 from madr.core.database import get_session
+from madr.core.redis import redis_manager
 from madr.core.security import generate_token, get_hash
 from madr.models import table_registry
 from madr.models.book import Book
@@ -22,45 +24,28 @@ from madr.schemas.security import Token
 from madr.schemas.user import UserCreate
 from tests.factories import BookFactory, NovelistFactory, UserFactory
 
-# @pytest.fixture(scope='session')
-# def engine():
-#     with PostgresContainer('postgres:17', driver='asyncpg') as postgres:
-# _engine = create_async_engine(postgres.get_connection_url())
-# yield _engine
-
 
 @pytest.fixture(scope='session')
 def engine():
     with PostgresContainer('postgres:17', driver='asyncpg') as postgres:
         _engine = create_async_engine(
             postgres.get_connection_url(),
-            poolclass=NullPool,  # adicione isso
+            poolclass=NullPool,
         )
         yield _engine
 
 
-# @pytest_asyncio.fixture
-# async def client(session: AsyncSession, user: User):
-
-#     async def override_get_db():
-#         yield session
-
-#     async def override_get_current_user():
-#         return user
-
-#     app.dependency_overrides[get_session] = override_get_db
-#     # app.dependency_overrides[get_current_user] = override_get_current_user
-
-#     yield TestClient(app)
-
-#     app.dependency_overrides.clear()
+@pytest.fixture(scope='session')
+def redis_container():
+    """Start Redis container for tests"""
+    with RedisContainer('redis:7-alpine') as redis:
+        yield redis
 
 
 @pytest_asyncio.fixture
-async def client(session: AsyncSession, user: User):
+async def client(session: AsyncSession, user: User, redis_container):
     async def override_get_db():
         yield session
-
     app.dependency_overrides[get_session] = override_get_db
 
     async with AsyncClient(
@@ -68,53 +53,25 @@ async def client(session: AsyncSession, user: User):
     ) as ac:
         yield ac
 
-    app.dependency_overrides.clear()
 
+@pytest_asyncio.fixture(autouse=True)
+async def redis_lifecycle(redis_container):
+    import madr.core.redis as redis_module  # noqa: PLC0415
 
-# @pytest_asyncio.fixture
-# async def client(session: AsyncSession, user: User):
-#     def override_get_db():
-#         yield session
+    original_host = redis_module.settings.REDIS_HOST
+    original_port = redis_module.settings.REDIS_PORT
 
-#     async def override_get_current_user():
-#         return user  # ou UserPublic.from_orm(user)
+    redis_module.settings.REDIS_HOST = redis_container.get_container_host_ip()
+    redis_module.settings.REDIS_PORT = redis_container.get_exposed_port(6379)
 
-#     app.dependency_overrides[get_session] = override_get_db
-#     app.dependency_overrides[get_current_user] = override_get_current_user
+    await redis_manager.connect()
 
-#     yield TestClient(app)
+    yield
 
-#     app.dependency_overrides.clear()
+    await redis_manager.close()
 
-
-# @pytest_asyncio.fixture
-# async def client(session: AsyncSession, user: User):
-
-#     def override_get_db():
-#         yield session
-
-#     async def override_active_user():
-#         return user
-
-#     app.dependency_overrides[get_session] = override_get_db
-#     app.dependency_overrides[active_user] = override_active_user
-# # type: ignore
-
-#     yield TestClient(app=app)
-
-#     app.dependency_overrides.clear()
-
-
-# @pytest_asyncio.fixture
-# async def client(session: AsyncSession):
-#     from madr.core.database import get_session  # noqa: PLC0415
-
-#     def override_get_db():
-#         yield session
-
-#     app.dependency_overrides[get_session] = override_get_db
-#     yield TestClient(app=app)
-#     app.dependency_overrides.clear()
+    redis_module.settings.REDIS_HOST = original_host
+    redis_module.settings.REDIS_PORT = original_port
 
 
 @pytest_asyncio.fixture
@@ -177,11 +134,11 @@ async def novelist_with_books(session: AsyncSession):
 
 
 @pytest_asyncio.fixture
-async def authenticated_token(user: User):
+async def authenticated_token(user: User, client):
+    """Cria um token autenticado com uma versão e jti"""
     token_delta_expire_time = timedelta(minutes=5)
 
-    version = '0'
-    # version = await get_user_token_version(redis_client, user_id)
+    version = await redis_manager.get_user_token_version(user.id)
     jti = uuid4()
     data = {
         'sub': user.id,

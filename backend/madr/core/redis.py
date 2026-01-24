@@ -1,38 +1,49 @@
-from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Optional
 
-import ipdb  # noqa: F401
-from fastapi import FastAPI
-from redis.asyncio import ConnectionPool, Redis
+from redis.asyncio import Redis
 
-from madr.settings import Settings
+from madr.config import Settings
 
 settings = Settings()  # type: ignore
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    redis_pool = ConnectionPool.from_url(
-        settings.REDIS_URL,
-        decode_responses=True,
-        max_connections=10,
-    )
-    app.state.redis = Redis(connection_pool=redis_pool)
+class __RedisManager:
+    def __init__(self):
+        self.redis: Optional[Redis] = None
 
-    yield
+    async def connect(self):
+        self.redis = await Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            decode_responses=True,
+        )
 
-    await app.state.redis.close()
-    await redis_pool.aclose()
+    async def close(self):
+        if self.redis:
+            await self.redis.close()
+
+    async def deny_token(self, jti: str, exp: int):
+        """Adiciona Token na lista de negação com TTL"""
+        ttl = exp - int(datetime.now(tz=timezone.utc).timestamp())
+        if self.redis and ttl > 0:
+            await self.redis.setex(f'deny:token:{jti}', ttl, '1')
+
+    async def is_token_denyed_list(self, jti: str) -> bool:
+        """Verifica se o token esta na lista de negação"""
+        if not self.redis:
+            return False
+        return await self.redis.exists(f'deny:token:{jti}') > 0  # type: ignore
+
+    async def increment_user_token_version(self, user_id: int) -> int:
+        """Logout de todos dispositivos"""
+        new_version = await self.redis.incr(f'user:token_version:{user_id}')  # type: ignore
+        return new_version
+
+    async def get_user_token_version(self, user_id: int) -> int:
+        """Obter versão atual to token do ususário"""
+        version = await self.redis.get(f'user:token_version:{user_id}')  # type: ignore
+        return int(version) if version else 0
 
 
-def get_redis(request) -> Redis:
-    return Redis(connection_pool=request.app.state.redis_pool)
-
-
-async def get_user_token_version(redis: Redis, user_id: int) -> int:
-    version = await redis.get(f'user:token_version:{user_id}')
-    return int(version) if version else 0
-
-
-async def invalidated_user_tokens(redis: Redis, user_id: int):
-    """invalida todos os tokens antigos"""
-    await redis.incr(f'user:token_version:{user_id}')
+redis_manager = __RedisManager()

@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int
 
     CORS_ORIGINS: str
-    REDIS_URL: str
+    REDIS_HOST: str
+    REDIS_PORT: int
 
     @property
     def cors_origins_list(self) -> list[str]:

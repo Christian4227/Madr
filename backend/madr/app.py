@@ -1,12 +1,13 @@
 import asyncio
 import sys
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from madr.api.v1.router import routers
 from madr.config import Settings
-from madr.core.redis import lifespan as redis_lifespan
+from madr.core.redis import redis_manager
 from madr.schemas import Message
 
 settings = Settings()  # type: ignore
@@ -16,7 +17,16 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
-app = FastAPI(lifespan=redis_lifespan)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await redis_manager.connect()
+    yield
+    # Shutdown
+    await redis_manager.close()
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get('/', response_model=Message)

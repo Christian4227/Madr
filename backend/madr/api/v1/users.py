@@ -1,5 +1,6 @@
 from http import HTTPStatus
 
+import ipdb  # noqa: F401
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -45,9 +46,9 @@ async def create_user(user: UserCreate, session: DBSession):
 
 @router.put('/', status_code=HTTPStatus.OK, response_model=UserPublic)
 async def update_user(
-    active_user: ActiveUser, user: UserUpdate, session: DBSession
+    auth_context: ActiveUser, user: UserUpdate, session: DBSession
 ):
-
+    active_user = auth_context.current_user
     update_data = user.model_dump(
         exclude_unset=True, exclude={'password': True}
     )
@@ -57,6 +58,7 @@ async def update_user(
         await session.commit()
         await session.refresh(active_user)
     except Exception:
+        # print(err)
         await session.rollback()
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -84,9 +86,10 @@ async def read_users(
 
 @router.delete('/', status_code=HTTPStatus.OK, response_model=Message)
 async def remove_user(
-    active_user: ActiveUser,
+    auth_context: ActiveUser,
     session: DBSession,
 ):
+    active_user = auth_context.current_user
     await session.execute(delete(User).where(User.id == active_user.id))
     try:
         await session.commit()
@@ -98,3 +101,9 @@ async def remove_user(
         )
 
     return {'message': 'Account Removed'}
+
+
+@router.get('/me', response_model=UserPublic)
+async def get_me(auth_context: ActiveUser):
+    active_user = auth_context.current_user
+    return active_user

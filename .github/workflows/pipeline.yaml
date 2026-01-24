@@ -15,7 +15,8 @@ jobs:
       ALGORITHM: ${{secrets.ALGORITHM}}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${{secrets.ACCESS_TOKEN_EXPIRE_MINUTES}}
       CORS_ORIGINS: ${{secrets.CORS_ORIGINS}}
-      REDIS_URL: ${{secrets.REDIS_URL}}
+      REDIS_HOST: ${{secrets.REDIS_HOST}}
+      REDIS_PORT: ${{secrets.REDIS_PORT}}
       ENV: test
 
     steps:

@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from madr.config import Settings
 from madr.core.database import get_session
+from madr.core.redis import redis_manager
 from madr.models.user import User
+from madr.schemas.user import AuthContext
 
 password_hash = PasswordHash.recommended()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/auth/token')
@@ -22,7 +24,7 @@ settings = Settings()  # type: ignore
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> User:
+) -> AuthContext:
     credentials_exception = HTTPException(
         status_code=HTTPStatus.UNAUTHORIZED,
         detail='Could not validate credentials',
@@ -33,32 +35,45 @@ async def get_current_user(
         detail='Expired token',
         headers={'WWW-Authenticate': 'Bearer'},
     )
+    session_invalidated = HTTPException(
+        status_code=HTTPStatus.UNAUTHORIZED,
+        detail='Session invalidated',
+        headers={'WWW-Authenticate': 'Bearer'},
+    )
+
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
+
         int_identifier = int(payload.get('sub'))
-        # token_version = int(payload.get('ver', 0))
+        token_version = int(payload.get('ver', 0))
+        jti = payload.get('jti')
+        exp = payload.get('exp')
+
     except jwt.ExpiredSignatureError:
         raise credentials_expired
-    except (
-        jwt.DecodeError,
-        jwt.InvalidTokenError,
-        ValueError,
-        TypeError,
-    ):
+    except (jwt.DecodeError, jwt.InvalidTokenError, ValueError, TypeError):
         raise credentials_exception
+
+    if await redis_manager.is_token_denyed_list(jti):
+        raise session_invalidated
 
     user = await session.scalar(select(User).where(User.id == int_identifier))
     if user is None:
         raise credentials_exception
 
-    # current_version_token = await redis_client.get(
-    #     f'user:token_version:{user.id}'
-    # )
-    # if current_version_token != token_version:
-    #     raise credentials_exception
-    return user
+    # Check token version
+    current_version = await redis_manager.get_user_token_version(user.id)
+    if current_version != token_version:
+        raise session_invalidated
+
+    return AuthContext(
+        current_user=user,
+        jti=jti,
+        exp=exp,
+        ver=token_version,
+    )
 
 
 def verify_password(
@@ -84,6 +99,7 @@ def generate_token(data: dict, exp_time_delta: Optional[timedelta] = None):
     expire = datetime.now(timezone.utc) + exp_time_delta
     data_to_encode['sub'] = str(data_to_encode['sub'])
     data_to_encode['exp'] = expire
+    data_to_encode['iat'] = datetime.now(timezone.utc)
     encoded_jwt = jwt.encode(
         data_to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
     )

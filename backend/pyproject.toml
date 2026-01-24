@@ -50,10 +50,8 @@ select = ['I', 'F', 'E', 'W', 'PL', 'PT']
 preview = true
 quote-style = 'single'
 
-[tool.pytest.ini_options]
-pythonpath = "."
-addopts = '-p no:warnings'
-asyncio_default_feature_loop_scope='function'
+[tool.coverage.run]
+omit=['madr/settings.py',]
 
 [tool.taskipy.tasks]
 lint = 'ruff check'

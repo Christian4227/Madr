@@ -3,6 +3,7 @@ from datetime import timedelta
 from http import HTTPStatus
 from unittest.mock import AsyncMock
 
+import ipdb  # noqa: F401
 import pytest
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
@@ -13,9 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from madr.api.v1.users import create_user
 from madr.app import app
 from madr.core.database import get_session
+from madr.core.security import get_current_user
 from madr.models.user import User
 from madr.schemas.security import Token
-from madr.schemas.user import UserCreate
+from madr.schemas.user import AuthContext, UserCreate
 from tests.utils import frozen_context
 
 base_url = '/users/'
@@ -98,6 +100,7 @@ async def test_update_user_deve_retornar_user_modificado(
     )
 
     data = response.json()
+
     assert data['username'] == modified_username
 
 
@@ -235,29 +238,46 @@ async def test_create_user_deve_falhar_sem_campos_obrigatorios(
 
 @pytest.mark.asyncio
 async def test_update_user_rollback_on_commit_error(
+    user: User,
     user_payload: dict,
-    authenticated_token: Token,
 ):
     del user_payload['password']
-    auth_header = {
-        'Authorization': f'Bearer {authenticated_token.access_token}'
-    }
 
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.commit.side_effect = SQLAlchemyError('DB error')
+    mock_session.refresh = AsyncMock()
+    mock_session.rollback = AsyncMock()
 
     async def mock_get_session():
         yield mock_session
 
+    # mock do contexto de autenticação
+    auth_context = AuthContext(
+        current_user=user,
+        jti='fake-jti',
+        exp=9999999999,
+        ver=0,
+    )
+
+    async def mock_get_current_user():
+        return auth_context
+
     app.dependency_overrides[get_session] = mock_get_session
+    app.dependency_overrides[get_current_user] = mock_get_current_user
+
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url='http://test'
+        transport=ASGITransport(app=app),
+        base_url='http://test',
     ) as client:
         response = await client.put(
-            base_url, json=user_payload, headers=auth_header
+            base_url,
+            json=user_payload,
+            headers={'Authorization': 'Bearer blablabla'},
         )
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+    assert response.json() == {'detail': 'Failed to update user'}
+
     mock_session.rollback.assert_called_once()
 
     app.dependency_overrides.clear()
@@ -265,11 +285,9 @@ async def test_update_user_rollback_on_commit_error(
 
 @pytest.mark.asyncio
 async def test_delete_user_deve_falhar_com_rollback(
-    session: AsyncSession, authenticated_token: Token
+    session: AsyncSession, user: User
 ):
-    auth_header = {
-        'Authorization': f'Bearer {authenticated_token.access_token}'
-    }
+    auth_header = {'Authorization': 'Bearer balbalbaba'}
     mock_session = AsyncMock(spec=AsyncSession)
 
     mock_session.commit.side_effect = SQLAlchemyError('DB Error')
@@ -279,7 +297,19 @@ async def test_delete_user_deve_falhar_com_rollback(
     async def mock_get_session():
         yield mock_session
 
+    # mock do contexto de autenticação
+    auth_context = AuthContext(
+        current_user=user,
+        jti='fake-jti',
+        exp=9999999999,
+        ver=0,
+    )
+
+    async def mock_get_current_user():
+        return auth_context
+
     app.dependency_overrides[get_session] = mock_get_session
+    app.dependency_overrides[get_current_user] = mock_get_current_user
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url='http://test'
     ) as client:
